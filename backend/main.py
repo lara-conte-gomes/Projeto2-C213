@@ -4,125 +4,156 @@ from skfuzzy import control as ctrl
 import paho.mqtt.client as mqtt
 import time
 import json
-import random
 import math
+import threading
 
-# --- CONFIGURAÇÃO MQTT (RF4) ---
-BROKER = "broker.hivemq.com"  
-PORT = 1883                         
-TOPIC_CONTROL = "datacenter/fuzzy/control"
-TOPIC_TEMP = "datacenter/fuzzy/temp"
+BROKER = "broker.hivemq.com"
+PORT = 1883
+TOPIC_CMD = "datacenter/fuzzy/cmd"
+TOPIC_RES = "datacenter/fuzzy/result"
+TOPIC_STREAM = "datacenter/fuzzy/stream"
 TOPIC_ALERT = "datacenter/fuzzy/alert"
 
-client = mqtt.Client()
-client.connect(BROKER, PORT, 60)
+simulating = False
 
-# --- SISTEMA FUZZY (RF1, RF2, RF3) ---
-# Antecedentes (Entradas)
-erro = ctrl.Antecedent(np.arange(-10, 11, 1), 'erro')
-delta_erro = ctrl.Antecedent(np.arange(-5, 6, 1), 'delta_erro')
-# Simplificação: Usaremos Erro e DeltaErro para o controle principal PD Fuzzy
-# Text e Qest entram no modelo físico, mas poderiam ser regras adicionais aqui.
-
-# Consequente (Saída)
+print("A configurar Sistema Fuzzy...")
+erro = ctrl.Antecedent(np.arange(-10, 11, 0.1), 'erro')
+delta_erro = ctrl.Antecedent(np.arange(-5, 6, 0.1), 'delta_erro')
 p_crac = ctrl.Consequent(np.arange(0, 101, 1), 'p_crac')
 
-# Funções de Pertinência (RF2)
-erro['negativo'] = fuzz.trapmf(erro.universe, [-10, -10, -2, 0])
-erro['zero'] = fuzz.trimf(erro.universe, [-2, 0, 2])
-erro['positivo'] = fuzz.trapmf(erro.universe, [0, 2, 10, 10])
+erro['MN'] = fuzz.trapmf(erro.universe, [-10, -10, -2, -0.5])
+erro['PN'] = fuzz.trimf(erro.universe, [-2, -0.5, 0])
+erro['ZE'] = fuzz.trimf(erro.universe, [-0.5, 0, 0.5])
+erro['PP'] = fuzz.trimf(erro.universe, [0, 0.5, 2])
+erro['MP'] = fuzz.trapmf(erro.universe, [0.5, 2, 10, 10])
 
-delta_erro['negativo'] = fuzz.trapmf(delta_erro.universe, [-5, -5, -1, 0])
-delta_erro['zero'] = fuzz.trimf(delta_erro.universe, [-1, 0, 1])
-delta_erro['positivo'] = fuzz.trapmf(delta_erro.universe, [0, 1, 5, 5])
+delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-5, -5, -1, -0.1])
+delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-1, -0.2, 0])
+delta_erro['ZE'] = fuzz.trimf(delta_erro.universe, [-0.2, 0, 0.2])
+delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 0.2, 1])
+delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 1, 5, 5])
 
-p_crac['baixa'] = fuzz.trimf(p_crac.universe, [0, 0, 50])
-p_crac['media'] = fuzz.trimf(p_crac.universe, [25, 50, 75])
-p_crac['alta'] = fuzz.trimf(p_crac.universe, [50, 100, 100])
+p_crac['MB'] = fuzz.trimf(p_crac.universe, [0, 0, 25])
+p_crac['B'] = fuzz.trimf(p_crac.universe, [0, 25, 50])
+p_crac['M'] = fuzz.trimf(p_crac.universe, [25, 50, 75])
+p_crac['A'] = fuzz.trimf(p_crac.universe, [50, 75, 100])
+p_crac['MA'] = fuzz.trimf(p_crac.universe, [75, 100, 100])
 
-# Base de Regras (RF3) - Lógica PD
-rule1 = ctrl.Rule(erro['negativo'] & delta_erro['negativo'], p_crac['alta']) # Muito quente, esquentando
-rule2 = ctrl.Rule(erro['negativo'] & delta_erro['zero'], p_crac['alta'])
-rule3 = ctrl.Rule(erro['negativo'] & delta_erro['positivo'], p_crac['media'])
-rule4 = ctrl.Rule(erro['zero'] & delta_erro['negativo'], p_crac['media'])
-rule5 = ctrl.Rule(erro['zero'] & delta_erro['zero'], p_crac['media']) # Mantém
-rule6 = ctrl.Rule(erro['zero'] & delta_erro['positivo'], p_crac['baixa'])
-rule7 = ctrl.Rule(erro['positivo'] & delta_erro['negativo'], p_crac['media'])
-rule8 = ctrl.Rule(erro['positivo'] & delta_erro['zero'], p_crac['baixa'])
-rule9 = ctrl.Rule(erro['positivo'] & delta_erro['positivo'], p_crac['baixa']) # Muito frio, esfriando
+rules = [
+    ctrl.Rule(erro['MN'], p_crac['MB']),
+    ctrl.Rule(erro['PN'], p_crac['B']),
+    ctrl.Rule(erro['ZE'] & delta_erro['ZE'], p_crac['M']),
+    ctrl.Rule(erro['PP'], p_crac['A']),
+    ctrl.Rule(erro['MP'], p_crac['MA'])
+]
 
-crac_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9])
+crac_ctrl = ctrl.ControlSystem(rules)
 crac_sim = ctrl.ControlSystemSimulation(crac_ctrl)
 
-# --- MODELO FÍSICO E SIMULAÇÃO (RF5, RF6) ---
 def modelo_fisico(T_atual, P_crac, Q_est, T_ext):
-    # Equação do PDF: T[n+1] = 0.9*T[n] - 0.08*P + 0.05*Q + 0.02*Text + 3.5
-    T_next = (0.9 * T_atual) - (0.08 * P_crac) + (0.05 * Q_est) + (0.02 * T_ext) + 3.5
-    return T_next
+    return (0.9 * T_atual) - (0.08 * P_crac) + (0.05 * Q_est) + (0.02 * T_ext) + 3.5
 
-# Parâmetros Iniciais
-T_atual = 22.0
-T_setpoint = 22.0
-erro_anterior = 0
-passos_totais = 1440 # 24 horas (RF5)
-velocidade_simulacao = 0.1 # Segundos entre passos (para não demorar 24h reais)
+def on_connect(client, userdata, flags, rc):
+    print(f"Conectado ao Broker (RC: {rc})")
+    client.subscribe(TOPIC_CMD)
 
-print("Iniciando Simulação do Data Center...")
-
-for t in range(passos_totais):
-    # 1. Gerar Perfis Diários (2.10.1)
-    # Temperatura externa senoidal (dia/noite) + ruído
-    T_ext = 25 + 5 * math.sin(2 * math.pi * t / 1440) + np.random.normal(0, 0.5)
-    # Carga térmica variável (mais alta durante o dia)
-    Q_est = 40 + 20 * math.sin(2 * math.pi * (t-360) / 1440) + np.random.normal(0, 2)
-    Q_est = max(0, min(100, Q_est)) # Clamp 0-100
-
-    # 2. Calcular Erros
-    erro_atual = T_atual - T_setpoint # e > 0 (Quente, precisa resfriar)
-    delta_e = erro_atual - erro_anterior
-    
-    # 3. Inferência Fuzzy
-    crac_sim.input['erro'] = max(-10, min(10, erro_atual)) # Clamp nos limites do universo
-    crac_sim.input['delta_erro'] = max(-5, min(5, delta_e))
-    
+def on_message(client, userdata, msg):
     try:
-        crac_sim.compute()
-        P_crac_calc = crac_sim.output['p_crac']
-    except:
-        P_crac_calc = 50 # Fallback
+        payload = json.loads(msg.payload.decode())
+        cmd = payload.get("cmd")
+        if cmd == "controle_pontual":
+            tratar_pontual(payload)
+        elif cmd == "simular_24h":
+            t = threading.Thread(target=tratar_simulacao, args=(payload,))
+            t.start()
+    except Exception as e:
+        print(f"Erro: {e}")
 
-    # 4. Atualizar Modelo Físico
-    T_prox = modelo_fisico(T_atual, P_crac_calc, Q_est, T_ext)
+def tratar_pontual(dados):
+    try:
+        e = float(dados.get("erro", 0))
+        de = float(dados.get("delta_erro", 0))
+        crac_sim.input['erro'] = e
+        crac_sim.input['delta_erro'] = de
+        try: crac_sim.compute()
+        except: pass
+        res = crac_sim.output.get('p_crac', 50.0)
+        
+        client.publish(TOPIC_RES, json.dumps({
+            "tipo": "pontual", "erro": e, "p_crac": res,
+            "msg": f"Cálculo: Erro {e} -> Potência {res:.1f}%"
+        }))
+    except: pass
+
+def tratar_simulacao(dados):
+    global simulating
+    if simulating: return
+    simulating = True
+    print("A iniciar Simulação...")
+
+    T_set = 22.0
+    T_atual = 22.0
+    erro_ant = 0
+    T_ext_base = float(dados.get("temp_ext", 25))
+    Q_base = float(dados.get("carga", 40))
+
+    hist_temp = []
+    hist_crac = []
+    hist_erro = []
+
+    for t in range(1440): # 24h
+        if not simulating: break
+        
+        T_ext = T_ext_base + 5 * math.sin(2 * math.pi * (t - 480)/1440) + np.random.normal(0, 0.1)
+        Q_est = Q_base + 15 * math.exp(-((t - 720)**2)/(300**2)) + np.random.normal(0, 0.5)
+        
+        erro_atual = T_atual - T_set
+        delta_e = erro_atual - erro_ant
+        
+        crac_sim.input['erro'] = max(-10, min(10, erro_atual))
+        crac_sim.input['delta_erro'] = max(-5, min(5, delta_e))
+        try: crac_sim.compute()
+        except: pass
+        P_crac = crac_sim.output.get('p_crac', 50.0)
+        
+        T_prox = modelo_fisico(T_atual, P_crac, Q_est, T_ext)
+        
+        hist_temp.append(T_atual)
+        hist_crac.append(P_crac)
+        hist_erro.append(erro_atual)
+
+        if T_atual > 26 or T_atual < 18:
+            client.publish(TOPIC_ALERT, json.dumps({
+                "msg": f"ALERTA: Temp {T_atual:.1f}°C (Min {t})", "tipo": "alerta"
+            }))
+
+        if t % 5 == 0:
+            client.publish(TOPIC_STREAM, json.dumps({
+                "t": t, "temp": round(T_atual, 2), "crac": round(P_crac, 1)
+            }))
+            time.sleep(0.005) 
+
+        erro_ant = erro_atual
+        T_atual = T_prox
+
+    simulating = False
     
-    # 5. Sistema de Alertas (RF4)
-    if T_atual < 18 or T_atual > 26:
-        alerta = {
-            "timestamp": t,
-            "tipo": "CRITICO",
-            "mensagem": f"Temperatura fora da faixa segura: {T_atual:.2f}°C",
-            "valor": T_atual
-        }
-        client.publish(TOPIC_ALERT, json.dumps(alerta))
-        print(f"[ALERTA] {alerta['mensagem']}")
-
-    # 6. Publicar dados MQTT para Interface
-    payload = {
-        "tempo": t,
-        "temperatura": round(T_atual, 2),
-        "setpoint": T_setpoint,
-        "potencia_crac": round(P_crac_calc, 2),
-        "carga_termica": round(Q_est, 2),
-        "temp_externa": round(T_ext, 2),
-        "erro": round(erro_atual, 2)
+    stats = {
+        "temp": {"min": min(hist_temp), "max": max(hist_temp), "avg": sum(hist_temp)/len(hist_temp)},
+        "crac": {"min": min(hist_crac), "max": max(hist_crac), "avg": sum(hist_crac)/len(hist_crac)},
+        "erro": {"min": min(hist_erro), "max": max(hist_erro), "avg": sum(hist_erro)/len(hist_erro)}
     }
-    client.publish(TOPIC_TEMP, json.dumps(payload))
-    
-    # Atualizar variáveis para próximo passo
-    erro_anterior = erro_atual
-    T_atual = T_prox
-    
-    # Log console
-    if t % 10 == 0:
-        print(f"Minuto {t}: Temp={T_atual:.2f}°C | CRAC={P_crac_calc:.2f}% | Ext={T_ext:.2f}°C")
 
-    time.sleep(velocidade_simulacao)
+    client.publish(TOPIC_RES, json.dumps({
+        "tipo": "fim_simulacao", 
+        "msg": "Simulação Finalizada.",
+        "stats": stats
+    }))
+    print("Simulação concluída.")
+
+if __name__ == "__main__":
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(BROKER, PORT, 60)
+    client.loop_forever()

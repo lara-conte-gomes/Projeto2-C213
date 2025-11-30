@@ -1,65 +1,151 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle Inteligente de Data Center</title>
+    <title>Sistema Fuzzy - Data Center</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Monitoramento Fuzzy CRAC</h1>
-            <div id="connection-status" class="status disconnected">Desconectado</div>
-        </header>
+<body class="flex flex-col h-screen overflow-hidden text-slate-300 bg-slate-900">
 
-        <main class="dashboard">
-            <section class="cards">
-                <div class="card">
-                    <h3>Temperatura Atual</h3>
-                    <div class="value" id="val-temp">-- °C</div>
-                </div>
-                <div class="card">
-                    <h3>Setpoint</h3>
-                    <div class="value" id="val-setpoint">22 °C</div>
-                </div>
-                <div class="card">
-                    <h3>Potência CRAC</h3>
-                    <div class="value" id="val-crac">-- %</div>
-                    <div class="progress-bar"><div id="bar-crac" style="width: 0%"></div></div>
-                </div>
-                <div class="card">
-                    <h3>Carga Térmica</h3>
-                    <div class="value" id="val-load">-- %</div>
-                </div>
-            </section>
+    <header class="bg-slate-900 border-b border-slate-700 p-4 flex justify-between items-center shadow-lg z-10">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-green-600 rounded flex items-center justify-center shadow-lg">
+                <i class="fas fa-server text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide text-white">Controle Inteligente</h1>
+                <p class="text-xs text-slate-400">Sistema Fuzzy MISO - Data Center</p>
+            </div>
+        </div>
+        <div id="status-badge" class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold transition-all">
+            <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div> OFF
+        </div>
+    </header>
 
-            <section class="charts-container">
-                <div class="chart-box">
-                    <h3>Evolução Temporal (Temp vs Setpoint)</h3>
-                    <canvas id="tempChart"></canvas>
-                </div>
-                <div class="chart-box">
-                    <h3>Atuação do Controlador (Potência)</h3>
-                    <canvas id="powerChart"></canvas>
-                </div>
-            </section>
+    <nav class="flex border-b border-slate-700 bg-slate-800">
+        <div onclick="switchTab('control')" id="tab-control" class="flex-1 py-3 text-sm font-bold border-b-2 border-green-500 text-green-400 bg-slate-800/50 cursor-pointer text-center transition">
+            <i class="fas fa-sliders-h mr-2"></i> Painel de Controle
+        </div>
+        <div onclick="switchTab('report')" id="tab-report" class="flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 cursor-pointer text-center transition hover:text-slate-300">
+            <i class="fas fa-file-pdf mr-2"></i> Relatórios & Logs
+        </div>
+    </nav>
 
-            <section class="bottom-panel">
-                <div class="panel">
-                    <h3>Log de Alertas</h3>
-                    <ul id="alert-list" class="alert-box"></ul>
+    <main class="flex-1 overflow-y-auto p-6 relative">
+
+        <div id="view-control" class="max-w-7xl mx-auto space-y-6">
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-sm">
+                    <div class="text-xs text-slate-400 uppercase font-bold">Temperatura</div>
+                    <div class="text-2xl text-white font-bold mt-1"><span id="rt-temp">--</span> °C</div>
                 </div>
-                <div class="panel">
-                    <h3>Status do Sistema</h3>
-                    <p>Erro Atual: <span id="val-error">0</span></p>
-                    <p>Temp. Externa: <span id="val-ext">0</span> °C</p>
+                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-sm">
+                    <div class="text-xs text-slate-400 uppercase font-bold">Erro (Set - Atual)</div>
+                    <div class="text-2xl text-white font-bold mt-1"><span id="rt-erro">--</span> °C</div>
                 </div>
-            </section>
-        </main>
-    </div>
+                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-sm">
+                    <div class="text-xs text-slate-400 uppercase font-bold">Potência CRAC</div>
+                    <div class="text-2xl text-green-400 font-bold mt-1"><span id="rt-crac">--</span> %</div>
+                </div>
+                 <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-sm">
+                    <div class="text-xs text-slate-400 uppercase font-bold">Estado / Alertas</div>
+                    <div id="rt-alert" class="text-sm text-slate-300 mt-2 font-semibold">Sistema Normal</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-4 space-y-6">
+                    <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                        <h2 class="text-slate-100 font-bold mb-4 flex items-center gap-2"><i class="fas fa-edit text-green-400"></i> Parâmetros</h2>
+                        
+                        <div class="mb-4">
+                            <div class="flex justify-between mb-1"><label class="text-xs font-bold text-slate-400">Erro (°C)</label><span id="disp-erro" class="text-xs font-mono text-green-400">0.0</span></div>
+                            <input type="range" id="in-erro" min="-10" max="10" step="0.1" value="0" class="w-full">
+                        </div>
+                        <div class="mb-4">
+                            <div class="flex justify-between mb-1"><label class="text-xs font-bold text-slate-400">Delta Erro</label><span id="disp-delta" class="text-xs font-mono text-blue-400">0.0</span></div>
+                            <input type="range" id="in-delta" min="-5" max="5" step="0.1" value="0" class="w-full">
+                        </div>
+                        <hr class="border-slate-700 my-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs text-slate-400 mb-1">T. Ext Base</label><input type="number" id="in-text" value="25" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm"></div>
+                            <div><label class="block text-xs text-slate-400 mb-1">Carga (%)</label><input type="number" id="in-load" value="40" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="sendCmd('controle_pontual')" class="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-lg text-sm font-bold shadow-lg transition active:scale-95 flex flex-col items-center justify-center gap-1"><i class="fas fa-bullseye"></i> Pontual</button>
+                        <button onclick="sendCmd('simular_24h')" class="bg-green-600 hover:bg-green-500 text-white p-3 rounded-lg text-sm font-bold shadow-lg transition active:scale-95 flex flex-col items-center justify-center gap-1"><i class="fas fa-play"></i> Simular 24h</button>
+                        <button onclick="limpar()" class="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg text-sm font-bold shadow-lg transition active:scale-95"><i class="fas fa-trash"></i> Limpar</button>
+                        <button onclick="resetZoom()" class="bg-slate-700 hover:bg-slate-600 text-white p-3 rounded-lg text-sm font-bold shadow-lg transition active:scale-95"><i class="fas fa-search-minus"></i> Reset Zoom</button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-8 space-y-6 flex flex-col h-full">
+                    <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg p-4 flex-1 min-h-[400px] relative">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-slate-200 text-sm"><i class="fas fa-chart-line mr-2"></i>Simulação 24h</h3>
+                        </div>
+                        <div class="relative w-full h-80">
+                            <canvas id="simChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-report" class="hidden max-w-7xl mx-auto space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-white"><i class="fas fa-table mr-2 text-blue-400"></i>Resultados da Simulação</h2>
+                        <button onclick="generatePDF()" class="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-sm font-bold transition"><i class="fas fa-file-pdf mr-2"></i>Gerar PDF</button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-400" id="stats-table">
+                            <thead class="text-xs text-slate-200 uppercase bg-slate-700/50">
+                                <tr>
+                                    <th class="px-4 py-3 rounded-tl-lg">Parâmetro</th>
+                                    <th class="px-4 py-3">Mínimo</th>
+                                    <th class="px-4 py-3">Médio</th>
+                                    <th class="px-4 py-3 rounded-tr-lg">Máximo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700">
+                                <tr class="bg-slate-800"><td class="px-4 py-3 font-medium text-white">Temperatura</td><td id="rep-temp-min">--</td><td id="rep-temp-avg">--</td><td id="rep-temp-max">--</td></tr>
+                                <tr class="bg-slate-800"><td class="px-4 py-3 font-medium text-white">Potência CRAC</td><td id="rep-crac-min">--</td><td id="rep-crac-avg">--</td><td id="rep-crac-max">--</td></tr>
+                                <tr class="bg-slate-800"><td class="px-4 py-3 font-medium text-white">Erro</td><td id="rep-erro-min">--</td><td id="rep-erro-avg">--</td><td id="rep-erro-max">--</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg flex flex-col h-full max-h-[500px]">
+                    <h2 class="text-xl font-bold text-white mb-4"><i class="fas fa-history mr-2 text-yellow-400"></i>Logs do Sistema</h2>
+                    <div id="system-logs" class="flex-1 overflow-y-auto bg-slate-900/50 p-4 rounded border border-slate-700 font-mono text-xs space-y-2">
+                        <div class="text-slate-500 italic">> Logs do sistema aparecerão aqui...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
     <script src="app.js"></script>
 </body>
 </html>

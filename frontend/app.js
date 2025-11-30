@@ -1,231 +1,176 @@
-// Configurações MQTT (WebSocket)
-const mqttConfig = {
-    host: "broker.hivemq.com",  // Troque para HiveMQ
-    port: 8000,                 // A porta WebSocket do HiveMQ é 8000 (não 8080)
-    path: "/mqtt",
-    clientId: "WebClient_" + Math.random().toString(16).substr(2, 8),
-    topics: {
-        temp: "datacenter/fuzzy/temp",
-        alert: "datacenter/fuzzy/alert"
+const { jsPDF } = window.jspdf;
+
+const dom = {
+    in: { erro: document.getElementById('in-erro'), delta: document.getElementById('in-delta'), text: document.getElementById('in-text'), load: document.getElementById('in-load') },
+    disp: { erro: document.getElementById('disp-erro'), delta: document.getElementById('disp-delta'), temp: document.getElementById('rt-temp'), crac: document.getElementById('rt-crac'), err_rt: document.getElementById('rt-erro'), alert: document.getElementById('rt-alert'), logs: document.getElementById('system-logs') },
+    rep: {
+        t_min: document.getElementById('rep-temp-min'), t_avg: document.getElementById('rep-temp-avg'), t_max: document.getElementById('rep-temp-max'),
+        c_min: document.getElementById('rep-crac-min'), c_avg: document.getElementById('rep-crac-avg'), c_max: document.getElementById('rep-crac-max'),
+        e_min: document.getElementById('rep-erro-min'), e_avg: document.getElementById('rep-erro-avg'), e_max: document.getElementById('rep-erro-max')
     }
 };
 
-// Configurações Globais
-const maxDataPoints = 60; // Máximo de pontos no gráfico
-const chartData = {
-    labels: [],
-    temp: [],
-    setpoint: [],
-    power: []
-};
+let inputState = { erro: 0, delta: 0, text: 25, load: 40 };
+let logHistory = []; 
 
-// --- Configuração dos Gráficos (Chart.js) ---
+dom.in.erro.oninput = (e) => { inputState.erro = e.target.value; dom.disp.erro.innerText = e.target.value; };
+dom.in.delta.oninput = (e) => { inputState.delta = e.target.value; dom.disp.delta.innerText = e.target.value; };
+dom.in.text.onchange = (e) => inputState.text = e.target.value;
+dom.in.load.onchange = (e) => inputState.load = e.target.value;
 
-// Gráfico de Temperatura
-const tempCtx = document.getElementById('tempChart').getContext('2d');
-const tempChart = new Chart(tempCtx, {
-    type: 'line',
-    data: {
-        labels: chartData.labels,
-        datasets: [
-            {
-                label: 'Temperatura (°C)',
-                data: chartData.temp,
-                borderColor: '#e94560', // Vermelho/Rosa
-                backgroundColor: 'rgba(233, 69, 96, 0.1)',
-                borderWidth: 2,
-                tension: 0.4,
-                fill: true
-            },
-            {
-                label: 'Setpoint',
-                data: chartData.setpoint,
-                borderColor: '#4caf50', // Verde
-                borderWidth: 2,
-                borderDash: [5, 5], // Linha tracejada
-                pointRadius: 0
-            }
-        ]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false, // Desativar animação para melhor performance em tempo real
-        scales: {
-            y: {
-                suggestedMin: 15,
-                suggestedMax: 30
-            }
-        }
-    }
-});
-
-// Gráfico de Potência
-const powerCtx = document.getElementById('powerChart').getContext('2d');
-const powerChart = new Chart(powerCtx, {
-    type: 'line',
-    data: {
-        labels: chartData.labels,
-        datasets: [{
-            label: 'Potência CRAC (%)',
-            data: chartData.power,
-            borderColor: '#00bcd4', // Ciano
-            backgroundColor: 'rgba(0, 188, 212, 0.2)',
-            borderWidth: 2,
-            fill: true,
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        scales: {
-            y: { min: 0, max: 100 }
-        }
-    }
-});
-
-// --- Lógica MQTT ---
-
-// 1. CRIAR O CLIENTE (Esta linha estava a faltar!)
-const client = new Paho.MQTT.Client(
-    mqttConfig.host, 
-    Number(mqttConfig.port), 
-    mqttConfig.path, 
-    mqttConfig.clientId
-);
-
-// 2. Definir os Callbacks
-client.onConnectionLost = onConnectionLost;
-client.onMessageArrived = onMessageArrived;
-
-// 3. Conectar
-console.log("A tentar conectar ao Broker " + mqttConfig.host + " na porta " + mqttConfig.port);
-updateStatus("A conectar...", "yellow");
-
-client.connect({
-    onSuccess: onConnect,
-    onFailure: onFailure,
-    keepAliveInterval: 30,
-    useSSL: false // Mosquitto na 8080 geralmente não usa SSL
-});
-
-// --- Funções Auxiliares ---
-
-function onConnect() {
-    console.log("Conectado com sucesso!");
-    updateStatus("Conectado", "green");
+function switchTab(view) {
+    document.getElementById('view-control').classList.add('hidden');
+    document.getElementById('view-report').classList.add('hidden');
+    document.getElementById('tab-control').className = "flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 cursor-pointer text-center hover:text-slate-300";
+    document.getElementById('tab-report').className = "flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 cursor-pointer text-center hover:text-slate-300";
     
-    // Subscrever aos tópicos
-    client.subscribe(mqttConfig.topics.temp);
-    client.subscribe(mqttConfig.topics.alert);
+    document.getElementById('view-' + view).classList.remove('hidden');
+    document.getElementById('tab-' + view).className = "flex-1 py-3 text-sm font-bold border-b-2 border-green-500 text-green-400 bg-slate-800/50 cursor-pointer text-center";
 }
 
-function onFailure(e) {
-    console.log("Falha na conexão: " + e.errorMessage);
-    updateStatus("Erro de Conexão", "red");
-    // Tentar reconectar em 5 segundos
-    setTimeout(() => {
-        console.log("A tentar reconectar...");
-        client.connect({ onSuccess: onConnect, onFailure: onFailure });
-    }, 5000);
+function addLog(msg, type='info') {
+    const time = new Date().toLocaleTimeString();
+    logHistory.push(`[${time}] ${msg}`);
+    const div = document.createElement('div');
+    div.className = type === 'alert' ? 'text-red-400 font-bold' : type === 'success' ? 'text-green-400' : 'text-slate-300';
+    div.innerHTML = `<span class="opacity-50 mr-2">[${time}]</span>${msg}`;
+    dom.disp.logs.prepend(div);
 }
 
-function onConnectionLost(responseObject) {
-    if (responseObject.errorCode !== 0) {
-        console.log("Conexão perdida: " + responseObject.errorMessage);
-        updateStatus("Desconectado", "red");
+const ctx = document.getElementById('simChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+        { label: 'Temperatura (°C)', data: [], borderColor: '#f97316', borderWidth: 2, tension: 0.4, pointRadius: 0, yAxisID: 'y' },
+        { label: 'CRAC (%)', data: [], borderColor: '#3b82f6', borderWidth: 1, pointRadius: 0, yAxisID: 'y1' }
+    ]},
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            x: { display: false },
+            y: { position: 'left', suggestedMin: 18, suggestedMax: 26, grid: { color: '#334155' } },
+            y1: { position: 'right', min: 0, max: 100, grid: { display: false } }
+        },
+        plugins: {
+            zoom: {
+                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+                pan: { enabled: true, mode: 'x' }
+            }
+        }
     }
+});
+
+function resetZoom() { chart.resetZoom(); }
+
+function limpar() {
+    chart.data.labels = []; chart.data.datasets.forEach(d => d.data = []); chart.update();
+    dom.disp.temp.innerText = "--"; dom.disp.crac.innerText = "--"; dom.disp.err_rt.innerText = "--";
+    logHistory = []; dom.disp.logs.innerHTML = "";
+    addLog("Interface limpa.");
 }
 
-function onMessageArrived(message) {
-    const topic = message.destinationName;
+const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "/mqtt", "Web_" + Date.now());
+
+client.onConnectionLost = () => {
+    document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> OFF';
+    addLog("Conexão perdida", "alert");
+};
+
+client.onMessageArrived = (msg) => {
     try {
-        const payload = JSON.parse(message.payloadString);
+        const p = JSON.parse(msg.payloadString);
+        const topic = msg.destinationName;
 
-        if (topic === mqttConfig.topics.temp) {
-            updateDashboard(payload);
-        } else if (topic === mqttConfig.topics.alert) {
-            addAlert(payload);
+        if (topic.includes("result")) {
+            if (p.tipo === "pontual") {
+                addLog(p.msg, "success");
+                dom.disp.crac.innerText = p.p_crac.toFixed(1);
+            } else if (p.tipo === "fim_simulacao") {
+                addLog("Simulação finalizada.", "success");
+                if(p.stats) {
+                    dom.rep.t_min.innerText = p.stats.temp.min.toFixed(2);
+                    dom.rep.t_avg.innerText = p.stats.temp.avg.toFixed(2);
+                    dom.rep.t_max.innerText = p.stats.temp.max.toFixed(2);
+                    dom.rep.c_min.innerText = p.stats.crac.min.toFixed(1);
+                    dom.rep.c_avg.innerText = p.stats.crac.avg.toFixed(1);
+                    dom.rep.c_max.innerText = p.stats.crac.max.toFixed(1);
+                    dom.rep.e_min.innerText = p.stats.erro.min.toFixed(2);
+                    dom.rep.e_avg.innerText = p.stats.erro.avg.toFixed(2);
+                    dom.rep.e_max.innerText = p.stats.erro.max.toFixed(2);
+                }
+            }
+        } else if (topic.includes("stream")) {
+            chart.data.labels.push(p.t);
+            chart.data.datasets[0].data.push(p.temp);
+            chart.data.datasets[1].data.push(p.crac);
+            chart.update('none');
+            
+            dom.disp.temp.innerText = p.temp.toFixed(1);
+            dom.disp.crac.innerText = p.crac.toFixed(0);
+            dom.disp.err_rt.innerText = (p.temp - 22).toFixed(1);
+        } else if (topic.includes("alert")) {
+            addLog(p.msg, "alert");
+            dom.disp.alert.innerText = p.msg;
+            dom.disp.alert.className = "text-sm text-red-400 mt-2 font-bold animate-pulse";
         }
-    } catch (e) {
-        console.error("Erro ao ler JSON: ", e);
+    } catch (e) { console.error(e); }
+};
+
+function sendCmd(cmd) {
+    if (!client.isConnected()) return alert("Sem conexão!");
+    let payload = { cmd: cmd };
+    if (cmd === 'controle_pontual') { payload.erro = inputState.erro; payload.delta_erro = inputState.delta; }
+    else if (cmd === 'simular_24h') { 
+        limpar(); 
+        payload.temp_ext = inputState.text; payload.carga = inputState.load; 
+        addLog("A iniciar simulação...");
     }
+    client.send("datacenter/fuzzy/cmd", JSON.stringify(payload));
 }
 
-function updateDashboard(data) {
-    // Atualizar Textos
-    document.getElementById("val-temp").innerText = data.temperatura ? data.temperatura.toFixed(1) : "--";
-    document.getElementById("val-setpoint").innerText = data.setpoint ? data.setpoint.toFixed(1) : "--";
-    document.getElementById("val-crac").innerText = data.potencia_crac ? data.potencia_crac.toFixed(0) : "--";
-    document.getElementById("val-carga").innerText = data.carga_termica ? data.carga_termica.toFixed(0) : "--";
-    document.getElementById("val-ext").innerText = data.temp_externa ? data.temp_externa.toFixed(1) : "--";
-    
-    const erroEl = document.getElementById("val-erro");
-    if(erroEl) {
-        erroEl.innerText = data.erro ? data.erro.toFixed(2) : "0.0";
-    }
+function generatePDF() {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Relatório de Controlo Fuzzy", 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Data: ${new Date().toLocaleString()}`, 14, 28);
 
-    // Barras Visuais
-    const barTemp = document.getElementById("bar-temp");
-    if(barTemp) barTemp.style.width = Math.min(100, (data.temperatura / 40) * 100) + '%';
-    
-    const barCrac = document.getElementById("bar-crac");
-    if(barCrac) barCrac.style.width = data.potencia_crac + '%';
+    doc.setFontSize(14);
+    doc.text("Entradas", 14, 40);
+    doc.autoTable({
+        startY: 45,
+        head: [['Parâmetro', 'Valor']],
+        body: [
+            ['Temp. Externa', `${inputState.text} °C`],
+            ['Carga Térmica', `${inputState.load} %`]
+        ]
+    });
 
-    // Gráficos
-    if (chartData.labels.length > maxDataPoints) {
-        chartData.labels.shift();
-        chartData.temp.shift();
-        chartData.setpoint.shift();
-        chartData.power.shift();
-    }
+    doc.text("Estatísticas (24h)", 14, doc.lastAutoTable.finalY + 15);
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [['Variável', 'Mínimo', 'Médio', 'Máximo']],
+        body: [
+            ['Temperatura', dom.rep.t_min.innerText, dom.rep.t_avg.innerText, dom.rep.t_max.innerText],
+            ['Potência CRAC', dom.rep.c_min.innerText, dom.rep.c_avg.innerText, dom.rep.c_max.innerText],
+            ['Erro', dom.rep.e_min.innerText, dom.rep.e_avg.innerText, dom.rep.e_max.innerText]
+        ]
+    });
 
-    chartData.labels.push(data.tempo);
-    chartData.temp.push(data.temperatura);
-    chartData.setpoint.push(data.setpoint);
-    chartData.power.push(data.potencia_crac);
+    const canvasImg = document.getElementById('simChart').toDataURL("image/png", 1.0);
+    doc.text("Gráfico", 14, doc.lastAutoTable.finalY + 15);
+    doc.addImage(canvasImg, 'PNG', 14, doc.lastAutoTable.finalY + 20, 180, 80);
 
-    tempChart.update();
-    powerChart.update();
+    let finalY = doc.lastAutoTable.finalY + 110;
+    doc.text("Logs Recentes", 14, finalY);
+    const recentLogs = logHistory.slice(-20).map(l => [l]); 
+    doc.autoTable({ startY: finalY + 5, body: recentLogs });
+
+    doc.save("relatorio_fuzzy.pdf");
 }
 
-function addAlert(alertData) {
-    const list = document.getElementById("alert-container"); // Note que mudei o ID para bater com o HTML que forneci antes
-    if (!list) return;
-
-    // Remove mensagem de "aguardando"
-    if(list.firstElementChild && list.firstElementChild.innerText.includes("aguardar")) {
-        list.innerHTML = "";
-    }
-
-    const item = document.createElement("div");
-    item.className = "p-2 mb-2 rounded text-xs font-mono border-l-4 " + 
-                     (alertData.tipo === 'CRITICO' ? "bg-red-900/30 border-red-500 text-red-200" : "bg-blue-900/30 border-blue-500 text-blue-200");
-    
-    item.innerHTML = `<strong>[${alertData.timestamp}] ${alertData.tipo}:</strong> ${alertData.mensagem}`;
-    
-    list.prepend(item);
-    
-    if (list.children.length > 50) list.removeChild(list.lastChild);
-}
-
-function updateStatus(text, color) {
-    const el = document.getElementById('mqtt-status');
-    if(!el) return;
-    
-    // Reseta classes
-    el.className = "px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 border";
-    
-    if (color === 'green') {
-        el.classList.add('bg-green-900/50', 'text-green-400', 'border-green-800');
-        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500"></span> ${text}`;
-    } else if (color === 'red') {
-        el.classList.add('bg-red-900/50', 'text-red-400', 'border-red-800');
-        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> ${text}`;
-    } else {
-        el.classList.add('bg-yellow-900/50', 'text-yellow-400', 'border-yellow-800');
-        el.innerHTML = `<span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span> ${text}`;
-    }
-}
+client.connect({ onSuccess: () => {
+    document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-green-500"></div> ON';
+    client.subscribe("datacenter/fuzzy/#");
+}});
