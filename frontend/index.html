@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle Inteligente de Data Center</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Monitoramento Fuzzy CRAC</h1>
+            <div id="connection-status" class="status disconnected">Desconectado</div>
+        </header>
+
+        <main class="dashboard">
+            <section class="cards">
+                <div class="card">
+                    <h3>Temperatura Atual</h3>
+                    <div class="value" id="val-temp">-- °C</div>
+                </div>
+                <div class="card">
+                    <h3>Setpoint</h3>
+                    <div class="value" id="val-setpoint">22 °C</div>
+                </div>
+                <div class="card">
+                    <h3>Potência CRAC</h3>
+                    <div class="value" id="val-crac">-- %</div>
+                    <div class="progress-bar"><div id="bar-crac" style="width: 0%"></div></div>
+                </div>
+                <div class="card">
+                    <h3>Carga Térmica</h3>
+                    <div class="value" id="val-load">-- %</div>
+                </div>
+            </section>
+
+            <section class="charts-container">
+                <div class="chart-box">
+                    <h3>Evolução Temporal (Temp vs Setpoint)</h3>
+                    <canvas id="tempChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <h3>Atuação do Controlador (Potência)</h3>
+                    <canvas id="powerChart"></canvas>
+                </div>
+            </section>
+
+            <section class="bottom-panel">
+                <div class="panel">
+                    <h3>Log de Alertas</h3>
+                    <ul id="alert-list" class="alert-box"></ul>
+                </div>
+                <div class="panel">
+                    <h3>Status do Sistema</h3>
+                    <p>Erro Atual: <span id="val-error">0</span></p>
+                    <p>Temp. Externa: <span id="val-ext">0</span> °C</p>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

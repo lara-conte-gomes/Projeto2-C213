@@ -1,0 +1,109 @@
+:root {
+    --bg-color: #1a1a2e;
+    --card-color: #16213e;
+    --accent-color: #0f3460;
+    --text-color: #e94560;
+    --text-secondary: #fff;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-secondary);
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid var(--accent-color);
+}
+
+.status {
+    padding: 5px 15px;
+    border-radius: 15px;
+    font-weight: bold;
+}
+.connected { background-color: #4caf50; color: white; }
+.disconnected { background-color: #f44336; color: white; }
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.card {
+    background-color: var(--card-color);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.card h3 { color: #888; font-size: 0.9em; margin-top: 0; }
+.card .value { font-size: 2em; font-weight: bold; color: var(--text-color); }
+
+.progress-bar {
+    width: 100%;
+    background-color: #333;
+    height: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+#bar-crac {
+    height: 100%;
+    background-color: #4caf50;
+    transition: width 0.3s;
+}
+
+.charts-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.chart-box {
+    background-color: var(--card-color);
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.bottom-panel {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+}
+
+.panel {
+    background-color: var(--card-color);
+    padding: 20px;
+    border-radius: 10px;
+}
+
+.alert-box {
+    list-style: none;
+    padding: 0;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.alert-box li {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    color: #ff9800;
+}
+.alert-box li.CRITICO { color: #ff5252; font-weight: bold; }
