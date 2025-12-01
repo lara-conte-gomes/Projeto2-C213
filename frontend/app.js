@@ -142,7 +142,7 @@ function sendCmd(cmd) {
 function generatePDF() {
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text("Relatório de Controlo Fuzzy", 14, 20);
+    doc.text("Relatório de Controle Fuzzy", 14, 20);
     doc.setFontSize(10);
     doc.text(`Data: ${new Date().toLocaleString()}`, 14, 28);
 
