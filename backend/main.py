@@ -17,67 +17,59 @@ TOPIC_ALERT = "datacenter/fuzzy/alert"
 simulating = False
 
 print("A configurar Sistema Fuzzy...")
-errotemp = ctrl.Antecedent(np.arange(-14, 14.1, 0.1), 'errotemp')
-varerrotemp =ctrl.Antecedent(np.arange(-2, 2.1, 0.1), 'varerrotemp')
-aquecedor =ctrl.Consequent(np.arange(0, 101, 1), 'aquecedor')
 
-errotemp['MN'] = fuzz.trapmf(errotemp.universe, [-14, -14, -2,-1])
-errotemp['PN'] = fuzz.trimf(errotemp.universe, [-2,-1,0])
-errotemp['ZE'] = fuzz.trimf(errotemp.universe, [-1, 0, 1])
-errotemp['PP'] = fuzz.trimf(errotemp.universe, [0, 1, 2])
-errotemp['MP'] = fuzz.trapmf(errotemp.universe,[1, 2, 14,14])
+erro = ctrl.Antecedent(np.arange(-14, 14.1, 0.1), 'erro')
+delta_erro = ctrl.Antecedent(np.arange(-2, 2.1, 0.1), 'delta_erro')
+p_crac = ctrl.Consequent(np.arange(0, 101, 1), 'p_crac')
 
-varerrotemp['MN'] = fuzz.trapmf(varerrotemp.universe, [-2, -2, -0.2,-0.1])
-varerrotemp['PN'] = fuzz.trimf(varerrotemp.universe, [-0.2,-0.1,0])
-varerrotemp['ZE'] = fuzz.trimf(varerrotemp.universe, [-0.1, 0, 0.1])
-varerrotemp['PP'] = fuzz.trimf(varerrotemp.universe, [0, 0.1, 0.2])
-varerrotemp['MP'] = fuzz.trapmf(varerrotemp.universe,[0.1, 0.2, 2.1, 2.1])
+erro['MN'] = fuzz.trapmf(erro.universe, [-14, -14, -2, -1])
+erro['PN'] = fuzz.trimf(erro.universe, [-2, -1, 0])
+erro['ZE'] = fuzz.trimf(erro.universe, [-1, 0, 1])
+erro['PP'] = fuzz.trimf(erro.universe, [0, 1, 2])
+erro['MP'] = fuzz.trapmf(erro.universe, [1, 2, 14, 14])
 
-aquecedor['MB'] = fuzz.trimf(aquecedor.universe, [0, 0, 25])
-aquecedor['B'] = fuzz.trimf(aquecedor.universe, [0, 25, 50])
-aquecedor['M'] = fuzz.trimf(aquecedor.universe, [25, 50, 75]) # Ponto de Estabilidade
-aquecedor['A'] = fuzz.trimf(aquecedor.universe, [50, 75, 100])
-aquecedor['MA'] = fuzz.trimf(aquecedor.universe, [75, 100, 100])
+delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-2, -2, -0.2, -0.1])
+delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-0.2, -0.1, 0])
+delta_erro['ZE'] = fuzz.trimf(delta_erro.universe, [-0.1, 0, 0.1])
+delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 0.1, 0.2])
+delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 0.2, 2.1, 2.1])
+
+p_crac['MB'] = fuzz.trimf(p_crac.universe, [0, 0, 25])
+p_crac['B'] = fuzz.trimf(p_crac.universe, [0, 25, 50])
+p_crac['M'] = fuzz.trimf(p_crac.universe, [25, 50, 75])
+p_crac['A'] = fuzz.trimf(p_crac.universe, [50, 75, 100])
+p_crac['MA'] = fuzz.trimf(p_crac.universe, [75, 100, 100])
 
 rules = [
-    # CÉLULA 7: NOVA BASE DE REGRAS (CONTROLADOR CRAC - RESFRIAMENTO)
+    ctrl.Rule(erro['MN'] & delta_erro['MN'], p_crac['MA']),
+    ctrl.Rule(erro['MN'] & delta_erro['PN'], p_crac['MA']),
+    ctrl.Rule(erro['MN'] & delta_erro['ZE'], p_crac['MA']),
+    ctrl.Rule(erro['MN'] & delta_erro['PP'], p_crac['A']),
+    ctrl.Rule(erro['MN'] & delta_erro['MP'], p_crac['M']),
 
-    # O CRAC precisa de MÁXIMA POTÊNCIA (MA) quando o ERRO for MN (Temperatura Muito ACIMA do SP)
+    ctrl.Rule(erro['PN'] & delta_erro['MN'], p_crac['MA']),
+    ctrl.Rule(erro['PN'] & delta_erro['PN'], p_crac['A']),
+    ctrl.Rule(erro['PN'] & delta_erro['ZE'], p_crac['A']),
+    ctrl.Rule(erro['PN'] & delta_erro['PP'], p_crac['M']),
+    ctrl.Rule(erro['PN'] & delta_erro['MP'], p_crac['B']),
 
-    # --- LINHA ERRO 'MN' (Temperatura Muito ACIMA do SP) ---
-    ctrl.Rule(errotemp['MN'] & varerrotemp['MN'], aquecedor['MA']),
-    ctrl.Rule(errotemp['MN'] & varerrotemp['PN'], aquecedor['MA']),
-    ctrl.Rule(errotemp['MN'] & varerrotemp['ZE'], aquecedor['MA']),
-    ctrl.Rule(errotemp['MN'] & varerrotemp['PP'], aquecedor['A']),
-    ctrl.Rule(errotemp['MN'] & varerrotemp['MP'], aquecedor['M']),
+    ctrl.Rule(erro['ZE'] & delta_erro['MN'], p_crac['B']),
+    ctrl.Rule(erro['ZE'] & delta_erro['PN'], p_crac['A']),
+    ctrl.Rule(erro['ZE'] & delta_erro['ZE'], p_crac['M']),
+    ctrl.Rule(erro['ZE'] & delta_erro['PP'], p_crac['B']),
+    ctrl.Rule(erro['ZE'] & delta_erro['MP'], p_crac['MB']),
 
-    # --- LINHA ERRO 'PN' (Temperatura Pouco ACIMA do SP) ---
-    ctrl.Rule(errotemp['PN'] & varerrotemp['MN'], aquecedor['MA']),
-    ctrl.Rule(errotemp['PN'] & varerrotemp['PN'], aquecedor['A']),
-    ctrl.Rule(errotemp['PN'] & varerrotemp['ZE'], aquecedor['A']),
-    ctrl.Rule(errotemp['PN'] & varerrotemp['PP'], aquecedor['M']),
-    ctrl.Rule(errotemp['PN'] & varerrotemp['MP'], aquecedor['B']),
+    ctrl.Rule(erro['PP'] & delta_erro['MN'], p_crac['MB']),
+    ctrl.Rule(erro['PP'] & delta_erro['PN'], p_crac['B']),
+    ctrl.Rule(erro['PP'] & delta_erro['ZE'], p_crac['B']),
+    ctrl.Rule(erro['PP'] & delta_erro['PP'], p_crac['M']),
+    ctrl.Rule(erro['PP'] & delta_erro['MP'], p_crac['A']),
 
-    # --- LINHA ERRO 'ZE' (Temperatura em Torno do SP) ---
-    ctrl.Rule(errotemp['ZE'] & varerrotemp['MN'], aquecedor['B']),
-    ctrl.Rule(errotemp['ZE'] & varerrotemp['PN'], aquecedor['A']),
-    ctrl.Rule(errotemp['ZE'] & varerrotemp['ZE'], aquecedor['M']),  # Estabilidade
-    ctrl.Rule(errotemp['ZE'] & varerrotemp['PP'], aquecedor['B']),
-    ctrl.Rule(errotemp['ZE'] & varerrotemp['MP'], aquecedor['MB']),
-
-    # --- LINHA ERRO 'PP' (Temperatura Pouco ABAIXO do SP) ---
-    ctrl.Rule(errotemp['PP'] & varerrotemp['MN'], aquecedor['MB']),
-    ctrl.Rule(errotemp['PP'] & varerrotemp['PN'], aquecedor['B']),
-    ctrl.Rule(errotemp['PP'] & varerrotemp['ZE'], aquecedor['B']),
-    ctrl.Rule(errotemp['PP'] & varerrotemp['PP'], aquecedor['M']),
-    ctrl.Rule(errotemp['PP'] & varerrotemp['MP'], aquecedor['A']),
-
-    # --- LINHA ERRO 'MP' (Temperatura Muito ABAIXO do SP) ---
-    ctrl.Rule(errotemp['MP'] & varerrotemp['MN'], aquecedor['M']),
-    ctrl.Rule(errotemp['MP'] & varerrotemp['PN'], aquecedor['B']),
-    ctrl.Rule(errotemp['MP'] & varerrotemp['ZE'], aquecedor['MB']),
-    ctrl.Rule(errotemp['MP'] & varerrotemp['PP'], aquecedor['MB']),
-    ctrl.Rule(errotemp['MP'] & varerrotemp['MP'], aquecedor['MB']),
+    ctrl.Rule(erro['MP'] & delta_erro['MN'], p_crac['M']),
+    ctrl.Rule(erro['MP'] & delta_erro['PN'], p_crac['B']),
+    ctrl.Rule(erro['MP'] & delta_erro['ZE'], p_crac['MB']),
+    ctrl.Rule(erro['MP'] & delta_erro['PP'], p_crac['MB']),
+    ctrl.Rule(erro['MP'] & delta_erro['MP'], p_crac['MB']),
 ]
 
 crac_ctrl = ctrl.ControlSystem(rules)
@@ -100,14 +92,16 @@ def on_message(client, userdata, msg):
             t = threading.Thread(target=tratar_simulacao, args=(payload,))
             t.start()
     except Exception as e:
-        print(f"Erro: {e}")
+        print(f"Erro msg: {e}")
 
 def tratar_pontual(dados):
     try:
         e = float(dados.get("erro", 0))
         de = float(dados.get("delta_erro", 0))
+        
         crac_sim.input['erro'] = e
         crac_sim.input['delta_erro'] = de
+        
         try: crac_sim.compute()
         except: pass
         res = crac_sim.output.get('p_crac', 50.0)
@@ -116,7 +110,8 @@ def tratar_pontual(dados):
             "tipo": "pontual", "erro": e, "p_crac": res,
             "msg": f"Cálculo: Erro {e} -> Potência {res:.1f}%"
         }))
-    except: pass
+    except Exception as e: 
+        print(f"Erro pontual: {e}")
 
 def tratar_simulacao(dados):
     global simulating
@@ -125,8 +120,8 @@ def tratar_simulacao(dados):
     print("A iniciar Simulação...")
 
     T_set = 22.0
-    T_atual = 29.0
-    erro_ant = 7.0
+    T_atual = 22.0
+    erro_ant = 0
     T_ext_base = float(dados.get("temp_ext", 25))
     Q_base = float(dados.get("carga", 40))
 
@@ -134,7 +129,7 @@ def tratar_simulacao(dados):
     hist_crac = []
     hist_erro = []
 
-    for t in range(1440): # 24h
+    for t in range(1440): 
         if not simulating: break
         
         T_ext = T_ext_base + 5 * math.sin(2 * math.pi * (t - 480)/1440) + np.random.normal(0, 0.1)
@@ -143,8 +138,9 @@ def tratar_simulacao(dados):
         erro_atual = T_atual - T_set
         delta_e = erro_atual - erro_ant
         
-        crac_sim.input['erro'] = max(-10, min(10, erro_atual))
-        crac_sim.input['delta_erro'] = max(-5, min(5, delta_e))
+        crac_sim.input['erro'] = max(-14, min(14, erro_atual))
+        crac_sim.input['delta_erro'] = max(-2, min(2, delta_e))
+        
         try: crac_sim.compute()
         except: pass
         P_crac = crac_sim.output.get('p_crac', 50.0)
@@ -164,7 +160,7 @@ def tratar_simulacao(dados):
             client.publish(TOPIC_STREAM, json.dumps({
                 "t": t, "temp": round(T_atual, 2), "crac": round(P_crac, 1)
             }))
-            time.sleep(0.005) 
+            time.sleep(0.005)
 
         erro_ant = erro_atual
         T_atual = T_prox
@@ -188,5 +184,8 @@ if __name__ == "__main__":
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(BROKER, PORT, 60)
-    client.loop_forever()
+    try:
+        client.connect(BROKER, PORT, 60)
+        client.loop_forever()
+    except:
+        pass
