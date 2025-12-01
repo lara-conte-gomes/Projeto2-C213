@@ -70,7 +70,19 @@ function limpar() {
     addLog("Interface limpa.");
 }
 
-const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "/mqtt", "Web_" + Date.now());
+const client = mqtt.connect('ws://broker.hivemq.com:8000/mqtt');
+
+addLog('Teste de log manual.', 'info');
+
+client.on('connect', () => {
+    console.log('Conexão bem-sucedida com o broker!');
+    addLog('Conexão bem-sucedida com o broker!', 'success');
+});
+
+client.on('error', (err) => {
+    console.log(`Erro na conexão com o broker: ${err.message}`);
+    addLog(`Erro na conexão com o broker: ${err.message}`, 'alert');
+});
 
 client.onConnectionLost = () => {
     document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> OFF';
