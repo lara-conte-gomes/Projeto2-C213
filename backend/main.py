@@ -18,21 +18,21 @@ simulating = False
 
 print("A configurar Sistema Fuzzy...")
 
-erro = ctrl.Antecedent(np.arange(-14, 14.1, 0.1), 'erro')
-delta_erro = ctrl.Antecedent(np.arange(-2, 2.1, 0.1), 'delta_erro')
+erro = ctrl.Antecedent(np.arange(-14, 10.1, 0.1), 'erro')
+delta_erro = ctrl.Antecedent(np.arange(-3, 3.01, 0.01), 'delta_erro')
 p_crac = ctrl.Consequent(np.arange(0, 101, 1), 'p_crac')
 
-erro['MN'] = fuzz.trapmf(erro.universe, [-14, -14, -2, -1])
-erro['PN'] = fuzz.trimf(erro.universe, [-2, -1, 0])
-erro['ZE'] = fuzz.trimf(erro.universe, [-1, 0, 1])
-erro['PP'] = fuzz.trimf(erro.universe, [0, 1, 2])
-erro['MP'] = fuzz.trapmf(erro.universe, [1, 2, 14, 14])
+erro['MN'] = fuzz.trapmf(erro.universe, [-14, -14, -9, -3])
+erro['PN'] = fuzz.trimf(erro.universe, [-9, -3, 0])
+erro['ZE'] = fuzz.trimf(erro.universe, [-3, 0, 3])
+erro['PP'] = fuzz.trimf(erro.universe, [0, 3, 9])
+erro['MP'] = fuzz.trapmf(erro.universe, [3, 9, 10, 10])
 
-delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-2, -2, -0.2, -0.1])
-delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-0.2, -0.1, 0])
+delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-3, -3, -0.3, -0.1])
+delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-0.3, -0.1, 0])
 delta_erro['ZE'] = fuzz.trimf(delta_erro.universe, [-0.1, 0, 0.1])
-delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 0.1, 0.2])
-delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 0.2, 2.1, 2.1])
+delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 0.1, 0.3])
+delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 0.3, 3.01, 3.01])
 
 p_crac['MB'] = fuzz.trimf(p_crac.universe, [0, 0, 25])
 p_crac['B'] = fuzz.trimf(p_crac.universe, [0, 25, 50])
@@ -41,35 +41,35 @@ p_crac['A'] = fuzz.trimf(p_crac.universe, [50, 75, 100])
 p_crac['MA'] = fuzz.trimf(p_crac.universe, [75, 100, 100])
 
 rules = [
-    ctrl.Rule(erro['MN'] & delta_erro['MN'], p_crac['MA']),
-    ctrl.Rule(erro['MN'] & delta_erro['PN'], p_crac['MA']),
-    ctrl.Rule(erro['MN'] & delta_erro['ZE'], p_crac['MA']),
-    ctrl.Rule(erro['MN'] & delta_erro['PP'], p_crac['A']),
+    ctrl.Rule(erro['MN'] & delta_erro['MN'], p_crac['MB']),
+    ctrl.Rule(erro['MN'] & delta_erro['PN'], p_crac['MB']),
+    ctrl.Rule(erro['MN'] & delta_erro['ZE'], p_crac['MB']),
+    ctrl.Rule(erro['MN'] & delta_erro['PP'], p_crac['B']),
     ctrl.Rule(erro['MN'] & delta_erro['MP'], p_crac['M']),
 
-    ctrl.Rule(erro['PN'] & delta_erro['MN'], p_crac['MA']),
-    ctrl.Rule(erro['PN'] & delta_erro['PN'], p_crac['A']),
-    ctrl.Rule(erro['PN'] & delta_erro['ZE'], p_crac['A']),
-    ctrl.Rule(erro['PN'] & delta_erro['PP'], p_crac['M']),
-    ctrl.Rule(erro['PN'] & delta_erro['MP'], p_crac['B']),
+    ctrl.Rule(erro['PN'] & delta_erro['MN'], p_crac['MB']),
+    ctrl.Rule(erro['PN'] & delta_erro['PN'], p_crac['B']),
+    ctrl.Rule(erro['PN'] & delta_erro['ZE'], p_crac['M']),
+    ctrl.Rule(erro['PN'] & delta_erro['PP'], p_crac['A']),
+    ctrl.Rule(erro['PN'] & delta_erro['MP'], p_crac['MA']),
 
-    ctrl.Rule(erro['ZE'] & delta_erro['MN'], p_crac['B']),
-    ctrl.Rule(erro['ZE'] & delta_erro['PN'], p_crac['A']),
+    ctrl.Rule(erro['ZE'] & delta_erro['MN'], p_crac['MB']),
+    ctrl.Rule(erro['ZE'] & delta_erro['PN'], p_crac['B']),
     ctrl.Rule(erro['ZE'] & delta_erro['ZE'], p_crac['M']),
-    ctrl.Rule(erro['ZE'] & delta_erro['PP'], p_crac['B']),
-    ctrl.Rule(erro['ZE'] & delta_erro['MP'], p_crac['MB']),
+    ctrl.Rule(erro['ZE'] & delta_erro['PP'], p_crac['A']),
+    ctrl.Rule(erro['ZE'] & delta_erro['MP'], p_crac['MA']),
 
-    ctrl.Rule(erro['PP'] & delta_erro['MN'], p_crac['MB']),
-    ctrl.Rule(erro['PP'] & delta_erro['PN'], p_crac['B']),
-    ctrl.Rule(erro['PP'] & delta_erro['ZE'], p_crac['B']),
-    ctrl.Rule(erro['PP'] & delta_erro['PP'], p_crac['M']),
-    ctrl.Rule(erro['PP'] & delta_erro['MP'], p_crac['A']),
+    ctrl.Rule(erro['PP'] & delta_erro['MN'], p_crac['B']),
+    ctrl.Rule(erro['PP'] & delta_erro['PN'], p_crac['M']),
+    ctrl.Rule(erro['PP'] & delta_erro['ZE'], p_crac['A']),
+    ctrl.Rule(erro['PP'] & delta_erro['PP'], p_crac['MA']),
+    ctrl.Rule(erro['PP'] & delta_erro['MP'], p_crac['MA']),
 
-    ctrl.Rule(erro['MP'] & delta_erro['MN'], p_crac['M']),
-    ctrl.Rule(erro['MP'] & delta_erro['PN'], p_crac['B']),
-    ctrl.Rule(erro['MP'] & delta_erro['ZE'], p_crac['MB']),
-    ctrl.Rule(erro['MP'] & delta_erro['PP'], p_crac['MB']),
-    ctrl.Rule(erro['MP'] & delta_erro['MP'], p_crac['MB']),
+    ctrl.Rule(erro['MP'] & delta_erro['MN'], p_crac['A']),
+    ctrl.Rule(erro['MP'] & delta_erro['PN'], p_crac['A']),
+    ctrl.Rule(erro['MP'] & delta_erro['ZE'], p_crac['MA']),
+    ctrl.Rule(erro['MP'] & delta_erro['PP'], p_crac['MA']),
+    ctrl.Rule(erro['MP'] & delta_erro['MP'], p_crac['MA']),
 ]
 
 crac_ctrl = ctrl.ControlSystem(rules)
@@ -119,8 +119,18 @@ def tratar_simulacao(dados):
     simulating = True
     print("A iniciar Simulação...")
 
-    T_set = 22.0
-    T_atual = 22.0
+    # T_set = 22.0
+    # T_atual = 22.0
+    # erro_ant = 0
+    # T_ext_base = float(dados.get("temp_ext", 25))
+    # Q_base = float(dados.get("carga", 40))
+
+    # ler setpoint enviado pelo frontend, padrão 22 °C
+    T_set = float(dados.get("setpoint", 22.0))
+
+    # começar a simulação já no setpoint
+    T_atual = T_set
+
     erro_ant = 0
     T_ext_base = float(dados.get("temp_ext", 25))
     Q_base = float(dados.get("carga", 40))

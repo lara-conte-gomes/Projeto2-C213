@@ -1,7 +1,7 @@
 const { jsPDF } = window.jspdf;
 
 const dom = {
-    in: { erro: document.getElementById('in-erro'), delta: document.getElementById('in-delta'), text: document.getElementById('in-text'), load: document.getElementById('in-load') },
+    in: { erro: document.getElementById('in-erro'), delta: document.getElementById('in-delta'), setpoint: document.getElementById('in-setpoint'), text: document.getElementById('in-text'), load: document.getElementById('in-load') },
     disp: { erro: document.getElementById('disp-erro'), delta: document.getElementById('disp-delta'), temp: document.getElementById('rt-temp'), crac: document.getElementById('rt-crac'), err_rt: document.getElementById('rt-erro'), alert: document.getElementById('rt-alert'), logs: document.getElementById('system-logs') },
     rep: {
         t_min: document.getElementById('rep-temp-min'), t_avg: document.getElementById('rep-temp-avg'), t_max: document.getElementById('rep-temp-max'),
@@ -10,11 +10,12 @@ const dom = {
     }
 };
 
-let inputState = { erro: 0, delta: 0, text: 25, load: 40 };
+let inputState = { erro: 0, delta: 0, setpoint: 22, text: 25, load: 40 };
 let logHistory = []; 
 
 dom.in.erro.oninput = (e) => { inputState.erro = e.target.value; dom.disp.erro.innerText = e.target.value; };
 dom.in.delta.oninput = (e) => { inputState.delta = e.target.value; dom.disp.delta.innerText = e.target.value; };
+dom.in.setpoint.onchange = (e) => inputState.setpoint = e.target.value;
 dom.in.text.onchange = (e) => inputState.text = e.target.value;
 dom.in.load.onchange = (e) => inputState.load = e.target.value;
 
@@ -70,7 +71,7 @@ function limpar() {
     addLog("Interface limpa.");
 }
 
-const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "/mqtt", "Web_" + Date.now());
+const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "/mqtt", "Web_" + Date.now());
 
 client.onConnectionLost = (responseObject) => {
     document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> OFF';
@@ -105,10 +106,12 @@ client.onMessageArrived = (msg) => {
             chart.data.datasets[0].data.push(p.temp);
             chart.data.datasets[1].data.push(p.crac);
             chart.update('none');
+
+            const currentSetpoint = parseFloat(dom.in.setpoint.value) || 22;
             
             dom.disp.temp.innerText = p.temp.toFixed(1);
             dom.disp.crac.innerText = p.crac.toFixed(0);
-            dom.disp.err_rt.innerText = (p.temp - 22).toFixed(1);
+            dom.disp.err_rt.innerText = (p.temp - currentSetpoint).toFixed(1);
         } else if (topic.includes("alert")) {
             addLog(p.msg, "alert");
             dom.disp.alert.innerText = p.msg;
@@ -129,8 +132,9 @@ function sendCmd(cmd) {
     }
     else if (cmd === 'simular_24h') { 
         limpar(); 
-        payload.temp_ext = inputState.text; 
-        payload.carga = inputState.load; 
+        payload.temp_ext = inputState.text;   // T_ext base
+        payload.carga = inputState.load;      // Q_est base
+        payload.setpoint = inputState.setpoint;                // aqui você escolhe: 16, 22, 25 ou 32
         addLog("A iniciar simulação...");
     }
     
@@ -181,6 +185,7 @@ function generatePDF() {
 }
 
 client.connect({ 
+    useSSL: true,
     onSuccess: () => {
         document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-green-500"></div> ON';
         addLog("Conectado ao Broker!", "success");
