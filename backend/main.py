@@ -19,7 +19,7 @@ simulating = False
 print("A configurar Sistema Fuzzy...")
 
 erro = ctrl.Antecedent(np.arange(-12, 12.1, 0.1), 'erro')
-delta_erro = ctrl.Antecedent(np.arange(-2, 2.01, 0.01), 'delta_erro')
+delta_erro = ctrl.Antecedent(np.arange(-6, 6.01, 0.01), 'delta_erro')
 p_crac = ctrl.Consequent(np.arange(0, 101, 1), 'p_crac')
 
 erro['MN'] = fuzz.trapmf(erro.universe, [-12, -12, -6, -3.5])
@@ -28,11 +28,11 @@ erro['ZE'] = fuzz.trimf(erro.universe, [-3.5, 0, 3.5])
 erro['PP'] = fuzz.trimf(erro.universe, [0, 3.5, 6])
 erro['MP'] = fuzz.trapmf(erro.universe, [3.5, 6, 12, 12])
 
-delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-2, -2, -0.3, -0.1])
-delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-0.3, -0.1, 0])
-delta_erro['ZE'] = fuzz.trimf(delta_erro.universe, [-0.1, 0, 0.1])
-delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 0.1, 0.3])
-delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 0.3, 2.01, 2.01])
+delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-6, -6, -2, -1])
+delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-2, -1, 0])
+delta_erro['ZE'] = fuzz.trimf(delta_erro.universe, [-1, 0, 1])
+delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 1, 2])
+delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [1, 2, 6, 6])
 
 p_crac['MB'] = fuzz.trimf(p_crac.universe, [0, 0, 25])
 p_crac['B'] = fuzz.trimf(p_crac.universe, [0, 25, 50])
@@ -82,6 +82,15 @@ rules = [
 crac_ctrl = ctrl.ControlSystem(rules)
 crac_sim = ctrl.ControlSystemSimulation(crac_ctrl)
 
+def exibir_regras_fuzzy():
+    """Exibe as regras fuzzy configuradas no sistema."""
+    print("Regras Fuzzy:")
+    for rule in crac_ctrl.rules:
+        print(rule)
+
+# Chamando a função para exibir as regras fuzzy
+exibir_regras_fuzzy()
+
 def modelo_fisico(T_atual, P_crac, Q_est, T_ext):
     return (0.9 * T_atual) - (0.08 * P_crac) + (0.05 * Q_est) + (0.02 * T_ext) + 3.5
 
@@ -118,6 +127,7 @@ def tratar_pontual(dados):
         # --- Processa o fuzzy ---
         try:
             crac_sim.compute()
+            print(f"Potência calculada: {crac_sim.output['p_crac']}")
         except Exception as err:
             print("Erro no cálculo fuzzy:", err)
 
@@ -160,6 +170,7 @@ def tratar_pontual(dados):
         crac_sim.input['delta_erro'] = de
 
         crac_sim.compute()
+        print(f"Potência calculada: {crac_sim.output['p_crac']}")
         res = crac_sim.output.get('p_crac', 50.0)
 
         # ------------------------------------------------------------
@@ -244,9 +255,10 @@ def tratar_simulacao(dados):
         
         erro_atual = T_atual - T_set
         delta_e = erro_atual - erro_ant
+       #print(f"Delta Erro: {delta_e}")
         
         crac_sim.input['erro'] = max(-14, min(14, erro_atual))
-        crac_sim.input['delta_erro'] = max(-2, min(2, delta_e))
+        crac_sim.input['delta_erro'] = max(-6, min(6, delta_e))
         
         try: crac_sim.compute()
         except: pass
