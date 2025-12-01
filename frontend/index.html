@@ -17,6 +17,12 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        canvas {
+            margin-bottom: 20px; /* Adiciona espaçamento entre os gráficos */
+        }
+    </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden text-slate-300 bg-slate-900">
 
@@ -41,6 +47,13 @@
         </div>
         <div onclick="switchTab('report')" id="tab-report" class="flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 cursor-pointer text-center transition hover:text-slate-300">
             <i class="fas fa-file-pdf mr-2"></i> Relatórios & Logs
+        </div>
+        <div onclick="switchTab('mqtt')" id="tab-mqtt" class="flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 cursor-pointer text-center transition hover:text-slate-300">
+            <i class="fas fa-network-wired mr-2"></i> MQTT Dashboard
+        </div>
+        <div onclick="switchTab('fuzzy')" id="tab-fuzzy"
+            class="flex-1 py-3 text-sm font-bold border-b-2 border-transparent text-slate-500 cursor-pointer text-center transition hover:text-slate-300">
+            <i class="fas fa-project-diagram mr-2"></i> Fuzzy Analyzer
         </div>
     </nav>
 
@@ -182,7 +195,7 @@
                 </div>
 
                 <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-lg flex flex-col h-full max-h-[500px]">
-                    <h2 class="text-xl font-bold text-white mb-4">
+                    <h2 class="text-xl font-bold text-slate-100 mb-4">
                         <i class="fas fa-history mr-2 text-yellow-400"></i>Logs do Sistema
                     </h2>
                     <div id="system-logs" class="flex-1 overflow-y-auto bg-slate-900/50 p-4 rounded border border-slate-700 font-mono text-xs space-y-2">
@@ -192,7 +205,100 @@
             </div>
         </div>
 
+        <div id="view-mqtt" class="hidden max-w-7xl mx-auto space-y-6">
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                <h2 class="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                    <i class="fas fa-paper-plane text-blue-400"></i> Publicar Mensagem
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input id="mqtt-topic-out" placeholder="Tópico" class="w-full bg-slate-900 border border-slate-600 p-2 rounded">
+
+                    <input id="mqtt-msg-out" placeholder="Mensagem" class="w-full bg-slate-900 border border-slate-600 p-2 rounded">
+
+                    <button onclick="mqttPublish()" class="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded font-bold">
+                        Enviar
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                <h2 class="text-xl font-bold text-slate-100 mb-4">
+                    <i class="fas fa-eye text-yellow-400 mr-2"></i> Monitorar Tópicos
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <input id="mqtt-topic-sub" placeholder="Tópico para monitorar" class="w-full bg-slate-900 border border-slate-600 p-2 rounded">
+
+                    <button onclick="mqttSubscribe()" class="bg-green-600 hover:bg-green-500 text-white p-2 rounded font-bold">
+                        Inscrever
+                    </button>
+
+                    <button onclick="clearMqttLogs()" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded font-bold">
+                        Limpar Logs
+                    </button>
+                </div>
+
+                <div id="mqtt-log" class="bg-slate-900/70 border border-slate-700 rounded p-4 h-96 overflow-y-auto font-mono text-xs text-slate-300 space-y-2">
+                    <div class="text-slate-600">> Logs MQTT aparecerão aqui...</div>
+                </div>
+            </div>
+
+        </div>
+
+        <div id="view-fuzzy" class="hidden max-w-7xl mx-auto space-y-6">
+
+            <!-- Função de Pertinência - ERRO -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                <h2 class="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                    <i class="fas fa-chart-area text-blue-400"></i> Função de Pertinência - ERRO
+                </h2>
+                <canvas id="mf-erro" class="w-full h-80"></canvas>
+            </div>
+
+            <!-- Função de Pertinência - DELTA ERRO -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                <h2 class="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                    <i class="fas fa-chart-area text-blue-400"></i> Função de Pertinência - DELTA ERRO
+                </h2>
+                <canvas id="mf-delta" class="w-full h-80"></canvas>
+            </div>
+
+            <!-- Função de Pertinência - SAÍDA -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                <h2 class="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                    <i class="fas fa-chart-area text-blue-400"></i> Função de Pertinência - SAÍDA
+                </h2>
+                <canvas id="mf-saida" class="w-full h-80"></canvas>
+            </div>
+
+            <!-- Ativação das Regras -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 shadow-lg">
+                <h2 class="text-xl font-bold text-slate-100 mb-4">
+                    <i class="fas fa-fire text-yellow-400 mr-2"></i> Ativação das Regras (Inference)
+                </h2>
+
+                <table class="w-full text-sm text-left text-slate-300" id="rules-table">
+                    <thead class="bg-slate-700/40 text-slate-200 text-xs uppercase">
+                        <tr>
+                            <th class="p-2">#</th>
+                            <th class="p-2">Erro</th>
+                            <th class="p-2">ΔErro</th>
+                            <th class="p-2">Ativação</th>
+                            <th class="p-2">Saída</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700"></tbody>
+                </table>
+            </div>
+
+        </div>
+
     </main>
     <script src="app.js"></script>
+    <script>
+
+
+    </script>
 </body>
 </html>

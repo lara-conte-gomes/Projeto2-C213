@@ -18,21 +18,21 @@ simulating = False
 
 print("A configurar Sistema Fuzzy...")
 
-erro = ctrl.Antecedent(np.arange(-14, 10.1, 0.1), 'erro')
-delta_erro = ctrl.Antecedent(np.arange(-3, 3.01, 0.01), 'delta_erro')
+erro = ctrl.Antecedent(np.arange(-12, 12.1, 0.1), 'erro')
+delta_erro = ctrl.Antecedent(np.arange(-2, 2.01, 0.01), 'delta_erro')
 p_crac = ctrl.Consequent(np.arange(0, 101, 1), 'p_crac')
 
-erro['MN'] = fuzz.trapmf(erro.universe, [-14, -14, -9, -3])
-erro['PN'] = fuzz.trimf(erro.universe, [-9, -3, 0])
-erro['ZE'] = fuzz.trimf(erro.universe, [-3, 0, 3])
-erro['PP'] = fuzz.trimf(erro.universe, [0, 3, 9])
-erro['MP'] = fuzz.trapmf(erro.universe, [3, 9, 10, 10])
+erro['MN'] = fuzz.trapmf(erro.universe, [-12, -12, -6, -3.5])
+erro['PN'] = fuzz.trimf(erro.universe, [-6, -3.5, 0])
+erro['ZE'] = fuzz.trimf(erro.universe, [-3.5, 0, 3.5])
+erro['PP'] = fuzz.trimf(erro.universe, [0, 3.5, 6])
+erro['MP'] = fuzz.trapmf(erro.universe, [3.5, 6, 12, 12])
 
-delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-3, -3, -0.3, -0.1])
+delta_erro['MN'] = fuzz.trapmf(delta_erro.universe, [-2, -2, -0.3, -0.1])
 delta_erro['PN'] = fuzz.trimf(delta_erro.universe, [-0.3, -0.1, 0])
 delta_erro['ZE'] = fuzz.trimf(delta_erro.universe, [-0.1, 0, 0.1])
 delta_erro['PP'] = fuzz.trimf(delta_erro.universe, [0, 0.1, 0.3])
-delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 0.3, 3.01, 3.01])
+delta_erro['MP'] = fuzz.trapmf(delta_erro.universe, [0.1, 0.3, 2.01, 2.01])
 
 p_crac['MB'] = fuzz.trimf(p_crac.universe, [0, 0, 25])
 p_crac['B'] = fuzz.trimf(p_crac.universe, [0, 25, 50])
@@ -40,32 +40,39 @@ p_crac['M'] = fuzz.trimf(p_crac.universe, [25, 50, 75])
 p_crac['A'] = fuzz.trimf(p_crac.universe, [50, 75, 100])
 p_crac['MA'] = fuzz.trimf(p_crac.universe, [75, 100, 100])
 
+# sistema_fuzzy.py (Trecho do bloco rules)
+
 rules = [
+    # --- LINHA ERRO 'MN' (Muito Frio) -> Resfriamento Mínimo (MB) ---
     ctrl.Rule(erro['MN'] & delta_erro['MN'], p_crac['MB']),
     ctrl.Rule(erro['MN'] & delta_erro['PN'], p_crac['MB']),
     ctrl.Rule(erro['MN'] & delta_erro['ZE'], p_crac['MB']),
     ctrl.Rule(erro['MN'] & delta_erro['PP'], p_crac['B']),
     ctrl.Rule(erro['MN'] & delta_erro['MP'], p_crac['M']),
 
+    # --- LINHA ERRO 'PN' (Pouco Frio) -> Resfriamento Baixo (B) / Médio (M) ---
     ctrl.Rule(erro['PN'] & delta_erro['MN'], p_crac['MB']),
     ctrl.Rule(erro['PN'] & delta_erro['PN'], p_crac['B']),
-    ctrl.Rule(erro['PN'] & delta_erro['ZE'], p_crac['M']),
-    ctrl.Rule(erro['PN'] & delta_erro['PP'], p_crac['A']),
-    ctrl.Rule(erro['PN'] & delta_erro['MP'], p_crac['MA']),
+    ctrl.Rule(erro['PN'] & delta_erro['ZE'], p_crac['M']), 
+    ctrl.Rule(erro['PN'] & delta_erro['PP'], p_crac['M']),
+    ctrl.Rule(erro['PN'] & delta_erro['MP'], p_crac['A']),
 
-    ctrl.Rule(erro['ZE'] & delta_erro['MN'], p_crac['MB']),
+    # --- LINHA ERRO 'ZE' (Zero Erro) -> Resfriamento Médio (M) ---
+    ctrl.Rule(erro['ZE'] & delta_erro['MN'], p_crac['MB']), # Reduz se o erro está caindo
     ctrl.Rule(erro['ZE'] & delta_erro['PN'], p_crac['B']),
-    ctrl.Rule(erro['ZE'] & delta_erro['ZE'], p_crac['M']),
+    ctrl.Rule(erro['ZE'] & delta_erro['ZE'], p_crac['B']), # Estabilidade no 50%
     ctrl.Rule(erro['ZE'] & delta_erro['PP'], p_crac['A']),
-    ctrl.Rule(erro['ZE'] & delta_erro['MP'], p_crac['MA']),
+    ctrl.Rule(erro['ZE'] & delta_erro['MP'], p_crac['MA']), # Aumenta se o erro está subindo
 
+    # --- LINHA ERRO 'PP' (Pouco Quente) -> Resfriamento Alto (A) / Máximo (MA) ---
     ctrl.Rule(erro['PP'] & delta_erro['MN'], p_crac['B']),
     ctrl.Rule(erro['PP'] & delta_erro['PN'], p_crac['M']),
     ctrl.Rule(erro['PP'] & delta_erro['ZE'], p_crac['A']),
     ctrl.Rule(erro['PP'] & delta_erro['PP'], p_crac['MA']),
     ctrl.Rule(erro['PP'] & delta_erro['MP'], p_crac['MA']),
 
-    ctrl.Rule(erro['MP'] & delta_erro['MN'], p_crac['A']),
+    # --- LINHA ERRO 'MP' (Muito Quente) -> Resfriamento Máximo (MA) ---
+    ctrl.Rule(erro['MP'] & delta_erro['MN'], p_crac['M']),
     ctrl.Rule(erro['MP'] & delta_erro['PN'], p_crac['A']),
     ctrl.Rule(erro['MP'] & delta_erro['ZE'], p_crac['MA']),
     ctrl.Rule(erro['MP'] & delta_erro['PP'], p_crac['MA']),
@@ -96,22 +103,112 @@ def on_message(client, userdata, msg):
 
 def tratar_pontual(dados):
     try:
-        e = float(dados.get("erro", 0))
-        de = float(dados.get("delta_erro", 0))
-        
+        # --- Entrada bruta do frontend ---
+        e_raw = float(dados.get("erro", 0))
+        de_raw = float(dados.get("delta_erro", 0))
+
+        # --- Saturação para o universo fuzzy ---
+        e = max(-12, min(12, e_raw))
+        de = max(-2, min(2, de_raw))
+
+        # --- Atribui valores ao simulador ---
         crac_sim.input['erro'] = e
         crac_sim.input['delta_erro'] = de
-        
-        try: crac_sim.compute()
-        except: pass
+
+        # --- Processa o fuzzy ---
+        try:
+            crac_sim.compute()
+        except Exception as err:
+            print("Erro no cálculo fuzzy:", err)
+
+        # --- Saída do fuzzy ---
         res = crac_sim.output.get('p_crac', 50.0)
-        
+
+        # >>> NOVO: graus de pertinência para depuração
+        mu = {
+            "erro": {
+                termo: float(fuzz.interp_membership(erro.universe, erro[termo].mf, e))
+                for termo in erro.terms
+            },
+            "delta_erro": {
+                termo: float(fuzz.interp_membership(delta_erro.universe, delta_erro[termo].mf, de))
+                for termo in delta_erro.terms
+            }
+        }
+
+        # --- Publica o resultado do cálculo pontual ---
         client.publish(TOPIC_RES, json.dumps({
-            "tipo": "pontual", "erro": e, "p_crac": res,
-            "msg": f"Cálculo: Erro {e} -> Potência {res:.1f}%"
+            "tipo": "pontual",
+            "erro": float(e),
+            "delta_erro": float(de),
+            "p_crac": float(res),
+            "msg": f"Cálculo Fuzzy: erro={de:.2f} -> potência={res:.2f}"
         }))
-    except Exception as e: 
+
+    except Exception as e:
+        print(f"Erro ao tratar controle pontual: {e}")
+
+def tratar_pontual(dados):
+    try:
+        e = float(dados.get("erro", 0))
+        de = float(dados.get("delta_erro", 0))
+
+        # -----------------------------
+        # 1. Cálculo normal do fuzzy
+        # -----------------------------
+        crac_sim.input['erro'] = e
+        crac_sim.input['delta_erro'] = de
+
+        crac_sim.compute()
+        res = crac_sim.output.get('p_crac', 50.0)
+
+        # ------------------------------------------------------------
+        # 2. Calcular pertinências individuais (MU) das entradas
+        # ------------------------------------------------------------
+        erro_mus = {term: fuzz.interp_membership(erro.universe, erro[term].mf, e)
+                    for term in erro.terms}
+
+        delta_mus = {term: fuzz.interp_membership(delta_erro.universe, delta_erro[term].mf, de)
+                     for term in delta_erro.terms}
+
+        # ------------------------------------------------------------
+        # 3. Calcular ativação de cada regra MISO (min())
+        # ------------------------------------------------------------
+        rules_activation = []
+
+        for idx, rule in enumerate(rules):
+            # Verifica quais termos a regra usa
+            termo_erro = rule.antecedent.term1
+            termo_delta = rule.antecedent.term2
+
+            mu_e = erro_mus[termo_erro]
+            mu_de = delta_mus[termo_delta]
+            mu_rule = min(mu_e, mu_de)
+
+            rules_activation.append({
+                "rule_id": idx + 1,
+                "erro": termo_erro,
+                "delta": termo_delta,
+                "activ": round(mu_rule, 4),
+                "saida": rule.consequent.term
+            })
+
+        # ------------------------------------------------------------
+        # 4. Envio MQTT incluindo as ativações das regras
+        # ------------------------------------------------------------
+        client.publish(TOPIC_RES, json.dumps({
+            "tipo": "pontual",
+            "erro": e,
+            "delta_erro": de,
+            "p_crac": res,
+            "saida": res,   # <-- ESSENCIAL PARA O GRÁFICO DE SAÍDA
+            "msg": f"Cálculo Fuzzy: erro={e:.2f}, delta_erro={de:.2f} → potência={res:.1f}%"
+        }))
+
+
+    except Exception as e:
         print(f"Erro pontual: {e}")
+
 
 def tratar_simulacao(dados):
     global simulating
@@ -161,10 +258,23 @@ def tratar_simulacao(dados):
         hist_crac.append(P_crac)
         hist_erro.append(erro_atual)
 
-        if T_atual > 26 or T_atual < 18:
+        # limites operacionais para alerta
+        LIM_INF = 18
+        LIM_SUP = 26
+
+        if T_atual < LIM_INF or T_atual > LIM_SUP:
+            # envia alerta
             client.publish(TOPIC_ALERT, json.dumps({
-                "msg": f"ALERTA: Temp {T_atual:.1f}°C (Min {t})", "tipo": "alerta"
+                "msg": f"ALERTA: Temp {T_atual:.1f}°C (Min {t})",
+                "tipo": "alerta"
             }))
+        else:
+            # envia estado normal
+            client.publish(TOPIC_ALERT, json.dumps({
+                "msg": "Sistema Normal",
+                "tipo": "normal"
+            }))
+
 
         if t % 5 == 0:
             client.publish(TOPIC_STREAM, json.dumps({
