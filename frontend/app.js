@@ -89,8 +89,7 @@ function plotMF(canvasId, x, mfs, title, operatingPoint = null) {
             pointRadius: x.map((_, i) => (i === idx ? 8 : 0)),
             showLine: false
         });
-}
-
+    }
 
     canvas.chartInstance = new Chart(ctx, {
         type: "line",
@@ -280,6 +279,27 @@ const chart = new Chart(ctx, {
     }
 });
 
+function updateRulesTable(rules) {
+    const tbody = document.getElementById("rules-table-body");
+    tbody.innerHTML = "";
+
+    rules.forEach(r => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td class="px-3 py-2 border border-slate-700 text-center">${r.id}</td>
+            <td class="px-3 py-2 border border-slate-700 text-center">${r.erro}</td>
+            <td class="px-3 py-2 border border-slate-700 text-center">${r.delta}</td>
+            <td class="px-3 py-2 border border-slate-700 text-center">${r.mu_erro.toFixed(3)}</td>
+            <td class="px-3 py-2 border border-slate-700 text-center">${r.mu_delta.toFixed(3)}</td>
+            <td class="px-3 py-2 border border-slate-700 text-center text-yellow-300 font-bold">${r.ativacao.toFixed(3)}</td>
+            <td class="px-3 py-2 border border-slate-700 text-center text-green-300 font-bold">${r.saida}</td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+}
+
 function resetZoom() { chart.resetZoom(); }
 
 function limpar() {
@@ -335,21 +355,23 @@ client.onMessageArrived = (msg) => {
             chart.update();
         }
 
-        /* ---------------------------------------
-           RESULT → ponto de operação nos MF
-        ---------------------------------------- */
+
         if (topic.includes("result")) {
 
             dom.disp.crac.innerText = payload.p_crac.toFixed(1);
 
             inputState.saida = payload.p_crac;
 
-            // Atualiza tabela
-            if (payload.rules) {
+            // 🔥 ATUALIZA A TABELA DE ATIVAÇÃO DAS REGRAS
+            if (payload.ativacoes) {
+                updateRulesTable(payload.ativacoes);
+            }
+
+            if (payload.ativacoes) {
                 const tbody = document.querySelector("#rules-table tbody");
                 tbody.innerHTML = "";
 
-                payload.rules.forEach(r => {
+                payload.ativacoes.forEach(r => {
                     const tr = document.createElement("tr");
                     tr.innerHTML = `
                         <td class="p-2">${r.rule_id}</td>

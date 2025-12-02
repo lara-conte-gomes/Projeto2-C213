@@ -6,6 +6,8 @@ import time
 import json
 import math
 import threading
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 
 BROKER = "broker.hivemq.com"
 PORT = 1883
@@ -110,11 +112,44 @@ def on_message(client, userdata, msg):
     except Exception as e:
         print(f"Erro msg: {e}")
 
+def calcular_ativacoes_regras(e, de):
+    # Pertinência das entradas
+    mu_erro = {t: fuzz.interp_membership(erro.universe, erro[t].mf, e)
+                for t in erro.terms}
+
+    mu_delta = {t: fuzz.interp_membership(delta_erro.universe, delta_erro[t].mf, de)
+                 for t in delta_erro.terms}
+
+    ativacoes = []
+    for i, rule in enumerate(rules):
+        termo_e = list(rule.antecedent._terms.keys())[0]
+        termo_de = list(rule.antecedent._terms.keys())[1]
+        termo_saida = list(rule.consequent._terms.keys())[0]
+
+        mu_e = mu_erro[termo_e]
+        mu_d = mu_delta[termo_de]
+        mu_rule = min(mu_e, mu_d)
+
+        ativacoes.append({
+            "id": i + 1,
+            "erro": termo_e,
+            "delta": termo_de,
+            "mu_erro": round(mu_e, 4),
+            "mu_delta": round(mu_d, 4),
+            "ativacao": round(mu_rule, 4),
+            "saida": termo_saida
+        })
+
+    return ativacoes
+
 def tratar_pontual(dados):
     try:
         # --- Entrada bruta do frontend ---
-        e_raw = float(dados.get("erro", 0))
-        de_raw = float(dados.get("delta_erro", 0))
+        e_raw = float(dados.get("erro", 0, flush=True))
+        de_raw = float(dados.get("delta_erro", 0, flush=True))
+        ativacoes = calcular_ativacoes_regras(e, de)
+        agregado = calcular_agregacao(ativacoes)
+        centroide = calcular_defuzzificacao(agregado)
 
         # --- Saturação para o universo fuzzy ---
         e = max(-12, min(12, e_raw))
@@ -127,9 +162,9 @@ def tratar_pontual(dados):
         # --- Processa o fuzzy ---
         try:
             crac_sim.compute()
-            print(f"Potência calculada: {crac_sim.output['p_crac']}")
+            print(f"Potência calculada: {crac_sim.output['p_crac']}", flush=True)
         except Exception as err:
-            print("Erro no cálculo fuzzy:", err)
+            print("Erro no cálculo fuzzy:", err, flush=True)
 
         # --- Saída do fuzzy ---
         res = crac_sim.output.get('p_crac', 50.0)
@@ -146,17 +181,19 @@ def tratar_pontual(dados):
             }
         }
 
-        # --- Publica o resultado do cálculo pontual ---
         client.publish(TOPIC_RES, json.dumps({
             "tipo": "pontual",
-            "erro": float(e),
-            "delta_erro": float(de),
-            "p_crac": float(res),
-            "msg": f"Cálculo Fuzzy: erro={de:.2f} -> potência={res:.2f}"
+            "erro": e,
+            "delta_erro": de,
+            "p_crac": centroide,
+            "ativacoes": ativacoes,     # <<<<< todas regras ativadas
+            "agregado": agregado,       # <<<<< curva resultante agregada
+            "centroide": centroide,     # <<<<< processo de defuzzificação
+            "msg": f"Inferência: erro={e:.2f}, de={de:.2f}, saída={centroide:.2f}"
         }))
-
+        
     except Exception as e:
-        print(f"Erro ao tratar controle pontual: {e}")
+        print(f"Erro ao tratar controle pontual: {e}", flush=True)
 
 def tratar_pontual(dados):
     try:
@@ -169,8 +206,12 @@ def tratar_pontual(dados):
         crac_sim.input['erro'] = e
         crac_sim.input['delta_erro'] = de
 
-        crac_sim.compute()
-        print(f"Potência calculada: {crac_sim.output['p_crac']}")
+        try:
+            crac_sim.compute()
+        except Exception as err:
+            print("Erro no compute:", err, flush=True)
+
+        print(f"Potência calculada: {crac_sim.output['p_crac']}", flush=True)
         res = crac_sim.output.get('p_crac', 50.0)
 
         # ------------------------------------------------------------
@@ -212,7 +253,8 @@ def tratar_pontual(dados):
             "erro": e,
             "delta_erro": de,
             "p_crac": res,
-            "saida": res,   # <-- ESSENCIAL PARA O GRÁFICO DE SAÍDA
+            "saida": res,   
+            "ativacoes": rules_activation,
             "msg": f"Cálculo Fuzzy: erro={e:.2f}, delta_erro={de:.2f} → potência={res:.1f}%"
         }))
 
@@ -220,6 +262,26 @@ def tratar_pontual(dados):
     except Exception as e:
         print(f"Erro pontual: {e}")
 
+def calcular_agregacao(ativacoes):
+    # cria vetor com zeros para o universo da saída
+    agregado = np.zeros_like(p_crac.universe)
+
+    for ativ in ativacoes:
+        termo = ativ["saida"]
+        grau = ativ["ativacao"]
+
+        mf = fuzz.interp_membership(
+            p_crac.universe,
+            p_crac[termo].mf,
+            p_crac.universe
+        )
+
+        agregado = np.maximum(agregado, np.minimum(grau, mf))
+
+    return agregado.tolist()
+
+def calcular_defuzzificacao(agregado):
+    return fuzz.defuzz(p_crac.universe, agregado, 'centroid')
 
 def tratar_simulacao(dados):
     global simulating
@@ -250,14 +312,16 @@ def tratar_simulacao(dados):
     for t in range(1440): 
         if not simulating: break
         
-        T_ext = T_ext_base + 5 * math.sin(2 * math.pi * (t - 480)/1440) + np.random.normal(0, 0.1)
-        Q_est = Q_base + 15 * math.exp(-((t - 720)**2)/(300**2)) + np.random.normal(0, 0.5)
+        T_ext = T_ext_base 
+        #+ 5 * math.sin(2 * math.pi * (t - 480)/1440) + np.random.normal(0, 0.1)
+        Q_est = Q_base 
+        #+ 15 * math.exp(-((t - 720)**2)/(300**2)) + np.random.normal(0, 0.5)
         
         erro_atual = T_atual - T_set
         delta_e = erro_atual - erro_ant
        #print(f"Delta Erro: {delta_e}")
         
-        crac_sim.input['erro'] = max(-14, min(14, erro_atual))
+        crac_sim.input['erro'] = max(-12, min(12, erro_atual))
         crac_sim.input['delta_erro'] = max(-6, min(6, delta_e))
         
         try: crac_sim.compute()
@@ -294,8 +358,67 @@ def tratar_simulacao(dados):
             }))
             time.sleep(0.005)
 
+        # printa tudo que conseguir,
+        # entradas
+        # saida
+        # temp atual
+        # valor da tabela da regra (qual decisão foi tomada)
+        # (T_atual, P_crac, Q_est, T_ext)
+        # timestamp da simulação
+
         erro_ant = erro_atual
         T_atual = T_prox
+
+        timestamp = t  # minuto da simulação
+
+        # 1. ENTRADAS DO FUZZY
+        print("\nSIMULAÇÃO")
+        print(f"[{timestamp} min] Entradas do Fuzzy:")
+        print(f"  erro       = {erro_atual:.3f}")
+        print(f"  delta_erro = {delta_e:.3f}")
+
+        # 2. SAÍDA DO FUZZY
+        print(f"  saída (p_crac) = {P_crac:.2f} %")
+
+        # 3. TEMPERATURA ATUAL
+        print(f"  T_atual   = {T_atual:.3f} °C")
+
+        print(f"  (T_atual={T_atual:.2f},  P_crac={P_crac:.2f},  Q_est={Q_est:.2f},  T_ext={T_ext:.2f})")
+
+        # calcular pertinências das entradas
+        mu_erro = {term: fuzz.interp_membership(erro.universe, erro[term].mf, erro_atual)
+                   for term in erro.terms}
+        mu_delta = {term: fuzz.interp_membership(delta_erro.universe, delta_erro[term].mf, delta_e)
+                    for term in delta_erro.terms}
+
+        rules_activation = []
+
+        for idx, rule in enumerate(rules):
+
+            termo_erro = rule.antecedent.term1.label
+            termo_delta = rule.antecedent.term2.label
+
+            mu_e = mu_erro[termo_erro]
+            mu_de = mu_delta[termo_delta]
+
+            mu_rule = min(mu_e, mu_de)
+
+            saida_label = rule.consequent[0].term.label
+
+            rules_activation.append({
+                "rule_id": idx + 1,
+                "erro": termo_erro,
+                "delta_erro": termo_delta,
+                "ativacao": round(mu_rule, 4),
+                "saida": saida_label
+            })
+
+        print("\nAtivação das Regras:", flush=True)
+        for r in rules_activation:
+            print(f" Regra {r['rule_id']:02d}: "
+                f"E={r['erro']}  DE={r['delta_erro']}  "
+                f"Ativação={r['ativacao']}  → Saída={r['saida']}",
+                flush=True)
 
     simulating = False
     
