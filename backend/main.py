@@ -162,9 +162,9 @@ def tratar_pontual(dados):
         # --- Processa o fuzzy ---
         try:
             crac_sim.compute()
-            print(f"Potência calculada: {crac_sim.output['p_crac']}", flush=True)
+            print(f"Potencia calculada: {crac_sim.output['p_crac']}", flush=True)
         except Exception as err:
-            print("Erro no cálculo fuzzy:", err, flush=True)
+            print("Erro no calculo fuzzy:", err, flush=True)
 
         # --- Saída do fuzzy ---
         res = crac_sim.output.get('p_crac', 50.0)
@@ -189,7 +189,7 @@ def tratar_pontual(dados):
             "ativacoes": ativacoes,     # <<<<< todas regras ativadas
             "agregado": agregado,       # <<<<< curva resultante agregada
             "centroide": centroide,     # <<<<< processo de defuzzificação
-            "msg": f"Inferência: erro={e:.2f}, de={de:.2f}, saída={centroide:.2f}"
+            "msg": f"Inferencia: erro={e:.2f}, de={de:.2f}, saída={centroide:.2f}"
         }))
         
     except Exception as e:
@@ -211,7 +211,7 @@ def tratar_pontual(dados):
         except Exception as err:
             print("Erro no compute:", err, flush=True)
 
-        print(f"Potência calculada: {crac_sim.output['p_crac']}", flush=True)
+        print(f"Potencia calculada: {crac_sim.output['p_crac']}", flush=True)
         res = crac_sim.output.get('p_crac', 50.0)
 
         # ------------------------------------------------------------
@@ -255,30 +255,31 @@ def tratar_pontual(dados):
             "p_crac": res,
             "saida": res,   
             "ativacoes": rules_activation,
-            "msg": f"Cálculo Fuzzy: erro={e:.2f}, delta_erro={de:.2f} → potência={res:.1f}%"
+            "msg": f"Calculo Fuzzy: erro={e:.2f}, delta_erro={de:.2f} → potencia={res:.1f}%"
         }))
 
 
     except Exception as e:
-        print(f"Erro pontual: {e}")
+        print(f"Erro pontual: {e}", flush=True)
 
 def calcular_agregacao(ativacoes):
-    # cria vetor com zeros para o universo da saída
     agregado = np.zeros_like(p_crac.universe)
 
     for ativ in ativacoes:
         termo = ativ["saida"]
         grau = ativ["ativacao"]
 
+        # função de pertinência do termo da saída
         mf = fuzz.interp_membership(
-            p_crac.universe,
-            p_crac[termo].mf,
+            p_crac.universe, 
+            p_crac[termo].mf, 
             p_crac.universe
         )
 
+        # max(combinação anterior, min(grau da regra, MF do termo))
         agregado = np.maximum(agregado, np.minimum(grau, mf))
 
-    return agregado.tolist()
+    return agregado
 
 def calcular_defuzzificacao(agregado):
     return fuzz.defuzz(p_crac.universe, agregado, 'centroid')
@@ -287,7 +288,7 @@ def tratar_simulacao(dados):
     global simulating
     if simulating: return
     simulating = True
-    print("A iniciar Simulação...")
+    print("A iniciar Simulacao...")
 
     # T_set = 22.0
     # T_atual = 22.0
@@ -372,13 +373,13 @@ def tratar_simulacao(dados):
         timestamp = t  # minuto da simulação
 
         # 1. ENTRADAS DO FUZZY
-        print("\nSIMULAÇÃO")
-        print(f"[{timestamp} min] Entradas do Fuzzy:")
-        print(f"  erro       = {erro_atual:.3f}")
-        print(f"  delta_erro = {delta_e:.3f}")
+        print("\nSIMULACAO")
+        print(f"[{timestamp} min] Entradas do Fuzzy:", flush=True)
+        print(f"  erro       = {erro_atual:.3f}", flush=True)
+        print(f"  delta_erro = {delta_e:.3f}", flush=True)
 
         # 2. SAÍDA DO FUZZY
-        print(f"  saída (p_crac) = {P_crac:.2f} %")
+        print(f"  saida (p_crac) = {P_crac:.2f} %", flush=True)
 
         # 3. TEMPERATURA ATUAL
         print(f"  T_atual   = {T_atual:.3f} °C")
@@ -413,12 +414,20 @@ def tratar_simulacao(dados):
                 "saida": saida_label
             })
 
-        print("\nAtivação das Regras:", flush=True)
+        print("\nAtivacao das Regras:", flush=True)
         for r in rules_activation:
             print(f" Regra {r['rule_id']:02d}: "
                 f"E={r['erro']}  DE={r['delta_erro']}  "
-                f"Ativação={r['ativacao']}  → Saída={r['saida']}",
+                f"Ativacao={r['ativacao']} - Saida={r['saida']}",
                 flush=True)
+            
+        agregado = calcular_agregacao(rules_activation)
+        saida_defuzz = calcular_defuzzificacao(agregado)
+
+        print("\n  Processo de Defuzzificacao", flush=True)
+        print(f"   Universo de saida (0 ate 100): {len(p_crac.universe)} pontos", flush=True)
+        print(f"   Agregacao (primeiros 15 pts): {agregado[:15]}", flush=True)
+        print(f"   Valor defuzzificado (centroide) - {saida_defuzz:.3f} %", flush=True)
 
     simulating = False
     
