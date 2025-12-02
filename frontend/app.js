@@ -305,15 +305,15 @@ function resetZoom() { chart.resetZoom(); }
 function limpar() {
     chart.data.labels = []; chart.data.datasets.forEach(d => d.data = []); chart.update();
     dom.disp.temp.innerText = "--"; dom.disp.crac.innerText = "--"; dom.disp.err_rt.innerText = "--";
-    logHistory = []; dom.disp.logs.innerHTML = "<div class='text-slate-500 italic'>Logs limpos.</div>";
+    logHistory = []; dom.disp.logs.innerHTML = "";
     addLog("Interface limpa.");
 }
 
-const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "/mqtt", "Web_" + Date.now());
+const client = new Paho.MQTT.Client("test.mosquitto.org", 8884, "/ws", "Web_" + Date.now()); 
 
-client.onConnectionLost = (responseObject) => {
+client.onConnectionLost = () => {
     document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-red-500"></div> OFF';
-    addLog("Conexão perdida: " + responseObject.errorMessage, "alert");
+    addLog("Conexão perdida", "alert");
 };
 
 client.onMessageArrived = (msg) => {
@@ -405,26 +405,15 @@ client.onMessageArrived = (msg) => {
 };
 
 function sendCmd(cmd) {
-    if (!client.isConnected()) {
-        addLog("Erro: MQTT desconectado", "alert");
-        return;
-    }
+    if (!client.isConnected()) return alert("Sem conexão!");
     let payload = { cmd: cmd };
-    if (cmd === 'controle_pontual') { 
-        payload.erro = inputState.erro; 
-        payload.delta_erro = inputState.delta; 
-    }
+    if (cmd === 'controle_pontual') { payload.erro = inputState.erro; payload.delta_erro = inputState.delta; }
     else if (cmd === 'simular_24h') { 
         limpar(); 
-        payload.temp_ext = inputState.text;   // T_ext base
-        payload.carga = inputState.load;      // Q_est base
-        payload.setpoint = inputState.setpoint;                // aqui você escolhe: 16, 22, 25 ou 32
+        payload.temp_ext = inputState.text; payload.carga = inputState.load; 
         addLog("A iniciar simulação...");
     }
-    
-    const message = new Paho.MQTT.Message(JSON.stringify(payload));
-    message.destinationName = "datacenter/fuzzy/cmd";
-    client.send(message);
+    client.send("datacenter/fuzzy/cmd", JSON.stringify(payload));
 }
 
 function generatePDF() {
@@ -471,11 +460,6 @@ function generatePDF() {
 client.connect({ 
     useSSL: true,
     onSuccess: () => {
-        document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-green-500"></div> ON';
-        addLog("Conectado ao Broker!", "success");
-        client.subscribe("datacenter/fuzzy/#");
-    },
-    onFailure: (e) => {
-        addLog("Falha na conexão: " + e.errorMessage, "alert");
-    }
-});
+    document.getElementById('status-badge').innerHTML = '<div class="w-2 h-2 rounded-full bg-green-500"></div> ON';
+    client.subscribe("datacenter/fuzzy/#");
+}});
