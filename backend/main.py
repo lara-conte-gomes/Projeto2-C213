@@ -163,9 +163,7 @@ def tratar_pontual(dados):
         e = float(dados.get("erro", 0))
         de = float(dados.get("delta_erro", 0))
 
-        # -----------------------------
         # 1. Cálculo normal do fuzzy
-        # -----------------------------
         crac_sim.input['erro'] = e
         crac_sim.input['delta_erro'] = de
 
@@ -173,18 +171,14 @@ def tratar_pontual(dados):
         print(f"Potência calculada: {crac_sim.output['p_crac']}")
         res = crac_sim.output.get('p_crac', 50.0)
 
-        # ------------------------------------------------------------
         # 2. Calcular pertinências individuais (MU) das entradas
-        # ------------------------------------------------------------
         erro_mus = {term: fuzz.interp_membership(erro.universe, erro[term].mf, e)
                     for term in erro.terms}
 
         delta_mus = {term: fuzz.interp_membership(delta_erro.universe, delta_erro[term].mf, de)
                      for term in delta_erro.terms}
 
-        # ------------------------------------------------------------
         # 3. Calcular ativação de cada regra MISO (min())
-        # ------------------------------------------------------------
         rules_activation = []
 
         for idx, rule in enumerate(rules):
@@ -204,9 +198,7 @@ def tratar_pontual(dados):
                 "saida": rule.consequent.term
             })
 
-        # ------------------------------------------------------------
         # 4. Envio MQTT incluindo as ativações das regras
-        # ------------------------------------------------------------
         client.publish(TOPIC_RES, json.dumps({
             "tipo": "pontual",
             "erro": e,
@@ -220,6 +212,27 @@ def tratar_pontual(dados):
     except Exception as e:
         print(f"Erro pontual: {e}")
 
+def calcular_agregacao(ativacoes):
+    agregado = np.zeros_like(p_crac.universe)
+
+    for ativ in ativacoes:
+        termo = ativ["saida"]
+        grau = ativ["ativacao"]
+
+        # função de pertinência do termo da saída
+        mf = fuzz.interp_membership(
+            p_crac.universe, 
+            p_crac[termo].mf, 
+            p_crac.universe
+        )
+
+        # max(combinação anterior, min(grau da regra, MF do termo))
+        agregado = np.maximum(agregado, np.minimum(grau, mf))
+
+    return agregado
+
+def calcular_defuzzificacao(agregado):
+    return fuzz.defuzz(p_crac.universe, agregado, 'centroid')
 
 def tratar_simulacao(dados):
     global simulating
@@ -296,6 +309,65 @@ def tratar_simulacao(dados):
 
         erro_ant = erro_atual
         T_atual = T_prox
+
+        timestamp = t  # minuto da simulação
+
+        # 1. ENTRADAS DO FUZZY
+        print("\nSIMULACAO")
+        print(f"[{timestamp} min] Entradas do Fuzzy:", flush=True)
+        print(f"  erro       = {erro_atual:.3f}", flush=True)
+        print(f"  delta_erro = {delta_e:.3f}", flush=True)
+
+        # 2. SAÍDA DO FUZZY
+        print(f"  saida (p_crac) = {P_crac:.2f} %", flush=True)
+
+        # 3. TEMPERATURA ATUAL
+        print(f"  T_atual   = {T_atual:.3f} °C")
+
+        print(f"  (T_atual={T_atual:.2f},  P_crac={P_crac:.2f},  Q_est={Q_est:.2f},  T_ext={T_ext:.2f})")
+
+        # calcular pertinências das entradas
+        mu_erro = {term: fuzz.interp_membership(erro.universe, erro[term].mf, erro_atual)
+                   for term in erro.terms}
+        mu_delta = {term: fuzz.interp_membership(delta_erro.universe, delta_erro[term].mf, delta_e)
+                    for term in delta_erro.terms}
+
+        rules_activation = []
+
+        for idx, rule in enumerate(rules):
+
+            termo_erro = rule.antecedent.term1.label
+            termo_delta = rule.antecedent.term2.label
+
+            mu_e = mu_erro[termo_erro]
+            mu_de = mu_delta[termo_delta]
+
+            mu_rule = min(mu_e, mu_de)
+
+            saida_label = rule.consequent[0].term.label
+
+            rules_activation.append({
+                "rule_id": idx + 1,
+                "erro": termo_erro,
+                "delta_erro": termo_delta,
+                "ativacao": round(mu_rule, 4),
+                "saida": saida_label
+            })
+
+        print("\nAtivacao das Regras:", flush=True)
+        for r in rules_activation:
+            print(f" Regra {r['rule_id']:02d}: "
+                f"E={r['erro']}  DE={r['delta_erro']}  "
+                f"Ativacao={r['ativacao']} - Saida={r['saida']}",
+                flush=True)
+            
+        agregado = calcular_agregacao(rules_activation)
+        saida_defuzz = calcular_defuzzificacao(agregado)
+
+        print("\n  Processo de Defuzzificacao", flush=True)
+        print(f"   Universo de saida (0 ate 100): {len(p_crac.universe)} pontos", flush=True)
+        print(f"   Agregacao (primeiros 15 pts): {agregado[:15]}", flush=True)
+        print(f"   Valor defuzzificado (centroide) - {saida_defuzz:.3f} %", flush=True)
 
     simulating = False
     

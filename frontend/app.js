@@ -396,7 +396,7 @@ function sendCmd(cmd) {
         limpar(); 
         payload.temp_ext = inputState.text;   // T_ext base
         payload.carga = inputState.load;      // Q_est base
-        payload.setpoint = inputState.setpoint;                // aqui você escolhe: 16, 22, 25 ou 32
+        payload.setpoint = inputState.setpoint;              
         addLog("A iniciar simulação...");
     }
     
